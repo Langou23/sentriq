@@ -1,0 +1,41 @@
+# Dependencies and generated output
+node_modules/
+.next/
+out/
+build/
+dist/
+.turbo/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local environment values and credentials
+.env*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# Logs and operating-system files
+*.log
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor-specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.code-workspace

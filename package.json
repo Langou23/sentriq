@@ -1,0 +1,27 @@
+{
+  "name": "sentriq",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/web",
+    "start": "npm run start --workspace apps/web",
+    "lint": "npm run lint --workspace apps/web",
+    "typecheck": "npm run typecheck --workspace apps/web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10"
+  },
+  "packageManager": "npm@10.9.8",
+  "devDependencies": {
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.9"
+  }
+}
