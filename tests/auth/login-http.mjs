@@ -216,7 +216,7 @@ async function setFixtureProfile(state, role) {
       "content-type": "application/json",
       "x-sentriq-test-fixture": "supabase",
     },
-    body: JSON.stringify({ badge: "AGENT", state, ...(role ? { role } : {}) }),
+    body: JSON.stringify({ badge: "000001", state, ...(role ? { role } : {}) }),
   });
   assert.equal(
     response.headers.get("x-sentriq-test-fixture"),
@@ -228,7 +228,7 @@ async function setFixtureProfile(state, role) {
 
 async function verifyExistingSessionGuards() {
   for (const state of ["inactive", "missing", "error", "unknown"]) {
-    const { response, jar } = await submit("AGENT", "fixture-password");
+    const { response, jar } = await submit("000001", "fixture-password");
     assert.equal(
       response.status,
       303,
@@ -260,7 +260,7 @@ async function verifyExistingSessionGuards() {
     await signOutFromPage("/agent", pageHtml, jar);
   }
 
-  const { response, jar } = await submit("AGENT", "fixture-password");
+  const { response, jar } = await submit("000001", "fixture-password");
   assert.equal(response.status, 303, "Role-change probe starts as an agent");
   const page = await probe("/agent", { jar });
   assert.equal(page.status, 200, "Agent page before the role change");
@@ -315,9 +315,8 @@ function expectInvalidField(html, name, french, english) {
     .find((candidate) => candidate.get("name") === name);
   assert.ok(input, `${name}: field must remain present after validation`);
   assert.equal(input.get("aria-invalid"), "true", `${name}: invalid state`);
-  assert.equal(
-    input.get("aria-describedby"),
-    `${name}-error`,
+  assert.ok(
+    input.get("aria-describedby")?.split(/\s+/u).includes(`${name}-error`),
     `${name}: associate the field with its validation message`,
   );
   const message = html.match(
@@ -379,6 +378,32 @@ try {
   assert.match(text, /mot de passe/iu, "French password label");
   assert.match(text, /password/iu, "English password label");
   assert.match(html, /autocomplete="username"/iu, "Badge autocomplete");
+  const badgeInput = [...html.matchAll(/<input\b[^>]*>/giu)]
+    .map((match) => attributes(match[0]))
+    .find((input) => input.get("name") === "badgeNumber");
+  assert.ok(badgeInput, "The badge field must be present");
+  assert.equal(
+    badgeInput.get("type"),
+    "text",
+    "Badge numbers preserve leading zeros as text",
+  );
+  assert.equal(
+    badgeInput.get("inputmode"),
+    "numeric",
+    "Use the numeric mobile keyboard",
+  );
+  assert.equal(
+    badgeInput.get("pattern"),
+    "[0-9]+",
+    "The badge field accepts ASCII digits only",
+  );
+  assert.ok(
+    badgeInput
+      .get("aria-describedby")
+      ?.split(/\s+/u)
+      .includes("badgeNumber-hint"),
+    "The badge field is associated with its numeric-format hint",
+  );
   assert.match(
     html,
     /autocomplete="current-password"/iu,
@@ -410,8 +435,35 @@ try {
     /enter your badge number/iu,
   );
 
-  const wrongBadge = await submit("DOES_NOT_EXIST", "fixture-password");
-  const wrongPassword = await submit("AGENT", "incorrect-fixture-password");
+  for (const [label, badge] of [
+    ["letters", "AGENT"],
+    ["mixed letters and digits", "12A3"],
+    ["positive sign", "+1"],
+    ["negative sign", "-1"],
+    ["decimal dot", "1.5"],
+    ["decimal comma", "1,5"],
+    ["scientific notation", "1e3"],
+    ["uppercase scientific notation", "1E3"],
+    ["internal whitespace", "000 001"],
+    ["non-ASCII digits", "１２３"],
+  ]) {
+    const result = await submit(badge, "fixture-password");
+    expectMessage(
+      result,
+      /matricule/iu,
+      /badge number/iu,
+      `Invalid badge: ${label}`,
+    );
+    expectInvalidField(
+      result.html,
+      "badgeNumber",
+      /matricule/iu,
+      /badge number/iu,
+    );
+  }
+
+  const wrongBadge = await submit("999999", "fixture-password");
+  const wrongPassword = await submit("000001", "incorrect-fixture-password");
   const invalidFr = /matricule ou mot de passe invalide/iu;
   const invalidEn = /invalid badge number or password/iu;
   expectMessage(wrongBadge, invalidFr, invalidEn, "Unknown badge");
@@ -432,20 +484,23 @@ try {
     "The complete alert must not disclose whether the badge or password was wrong",
   );
 
-  for (const badge of ["MISSING", "INACTIVE"]) {
+  for (const [badge, label] of [
+    ["000004", "Missing"],
+    ["000005", "Inactive"],
+  ]) {
     const result = await submit(badge, "fixture-password");
     expectMessage(
       result,
       /compte désactivé, contactez votre superviseur/iu,
       /account disabled\. contact your supervisor/iu,
-      `${badge} profile`,
+      `${label} profile`,
     );
   }
 
   for (const [badge, destination, frenchRole, englishRole] of [
-    ["  agent  ", "/agent", /agent/iu, /agent/iu],
-    ["SUPERVISOR", "/dispatch", /superviseur/iu, /supervisor/iu],
-    ["ADMIN", "/admin", /administrateur/iu, /admin(?:istrator)?/iu],
+    ["  000001  ", "/agent", /agent/iu, /agent/iu],
+    ["000002", "/dispatch", /superviseur/iu, /supervisor/iu],
+    ["000003", "/admin", /administrateur/iu, /admin(?:istrator)?/iu],
   ]) {
     const { response, jar } = await submit(badge, "fixture-password");
     assert.equal(
@@ -513,13 +568,17 @@ try {
     await signOutFromPage(destination, pageHtml, jar);
   }
 
-  for (const badge of ["PROFILE_ERROR", "UNKNOWN", "LOGOUT_ERROR"]) {
+  for (const [badge, label] of [
+    ["000006", "Profile query failure"],
+    ["000007", "Unknown role"],
+    ["000008", "Logout failure"],
+  ]) {
     const result = await submit(badge, "fixture-password");
     expectMessage(
       result,
       /(?:indisponible|désactivé)/iu,
       /(?:unavailable|disabled)/iu,
-      `${badge} fails closed`,
+      `${label} fails closed`,
     );
   }
 

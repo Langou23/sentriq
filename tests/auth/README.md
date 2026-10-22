@@ -15,7 +15,7 @@ No server, network request, Supabase account, credentials, or database writes ar
 
 Covered behavior:
 
-- Badge normalization and Zod validation with bilingual field errors.
+- Digits-only badge validation, leading-zero preservation, and bilingual field errors.
 - Password preservation and safe handling of malformed values, files, and FormData.
 - Generic credential errors without disclosing account existence or submitted secrets.
 - Active profile validation and role redirects to `/agent`, `/dispatch`, and `/admin`.
@@ -97,3 +97,21 @@ tokens, or cookie values.
 These checks exercise the production Next.js and Supabase SDK integration against
 controlled upstream responses; they do not replace hosted-account or RLS checks.
 Stop the fixture server afterward and before any further build or type generation.
+
+## Manual demo accounts
+
+Start the isolated fixture server above, then open `http://localhost:3101/login`.
+The demo password is `fixture-password` for every account below. These are public
+test fixtures, not hosted Supabase accounts or production credentials.
+
+| Badge number | Expected result                            |
+| ------------ | ------------------------------------------ |
+| `000001`     | Agent workspace (`/agent`)                 |
+| `000002`     | Supervisor workspace (`/dispatch`)         |
+| `000003`     | Administrator workspace (`/admin`)         |
+| `000004`     | Missing profile: account disabled message  |
+| `000005`     | Inactive profile: account disabled message |
+
+Enter the complete digit identifier, including leading zeros. Alphabetic badge
+numbers are rejected before any authentication request. Use the hosted Supabase
+server on a separate hostname when testing real accounts to keep demo cookies separate.

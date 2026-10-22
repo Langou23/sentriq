@@ -1,4 +1,4 @@
--- Run as postgres against a disposable database after applying the migration.
+-- Run as postgres against a disposable database after applying all migrations.
 -- Every fixture and change stays inside this transaction and is rolled back.
 begin;
 
@@ -160,17 +160,17 @@ select pg_temp.assert_true(
 insert into public.profiles (
   id, badge_number, first_name, last_name, role, created_at, updated_at
 ) values
-  ('00000000-0000-4000-8000-000000000001', '__sentriq_rls_agent_1__',
+  ('00000000-0000-4000-8000-000000000001', '000001',
     'Agent', 'One', 'agent', '2000-01-01', '2000-01-01'),
-  ('00000000-0000-4000-8000-000000000002', '__sentriq_rls_agent_2__',
+  ('00000000-0000-4000-8000-000000000002', '000002',
     'Agent', 'Two', 'agent', '2000-01-01', '2000-01-01'),
-  ('00000000-0000-4000-8000-000000000003', '__sentriq_rls_supervisor__',
+  ('00000000-0000-4000-8000-000000000003', '000003',
     'Supervisor', 'Three', 'supervisor', '2000-01-01', '2000-01-01'),
-  ('00000000-0000-4000-8000-000000000004', '__sentriq_rls_admin__',
+  ('00000000-0000-4000-8000-000000000004', '000004',
     'Admin', 'Four', 'admin', '2000-01-01', '2000-01-01');
 
 insert into public.profiles (id, badge_number) values
-  ('00000000-0000-4000-8000-000000000005', '__sentriq_rls_defaults__');
+  ('00000000-0000-4000-8000-000000000005', '000005');
 
 select pg_temp.assert_true(
   (select role = 'agent' and is_active and first_name is null
@@ -188,42 +188,42 @@ select pg_temp.expect_sqlstate(
 );
 select pg_temp.expect_sqlstate(
   $test$insert into public.profiles (id, badge_number, role)
-    values ('00000000-0000-4000-8000-000000000006', '__null_role__', null)$test$,
+    values ('00000000-0000-4000-8000-000000000006', '900009', null)$test$,
   '23502', '09 - role cannot be null'
 );
 select pg_temp.expect_sqlstate(
   $test$insert into public.profiles (id, badge_number, is_active)
-    values ('00000000-0000-4000-8000-000000000006', '__null_status__', null)$test$,
+    values ('00000000-0000-4000-8000-000000000006', '900010', null)$test$,
   '23502', '10 - active status cannot be null'
 );
 select pg_temp.expect_sqlstate(
   $test$insert into public.profiles (id, badge_number, created_at)
-    values ('00000000-0000-4000-8000-000000000006', '__null_created__', null)$test$,
+    values ('00000000-0000-4000-8000-000000000006', '900011', null)$test$,
   '23502', '11 - created_at cannot be null'
 );
 select pg_temp.expect_sqlstate(
   $test$insert into public.profiles (id, badge_number, updated_at)
-    values ('00000000-0000-4000-8000-000000000006', '__null_updated__', null)$test$,
+    values ('00000000-0000-4000-8000-000000000006', '900012', null)$test$,
   '23502', '12 - updated_at cannot be null'
 );
 select pg_temp.expect_sqlstate(
   $test$insert into public.profiles (id, badge_number)
-    values ('00000000-0000-4000-8000-000000000006', '__sentriq_rls_agent_1__')$test$,
+    values ('00000000-0000-4000-8000-000000000006', '000001')$test$,
   '23505', '13 - duplicate badge numbers are rejected'
 );
 select pg_temp.expect_sqlstate(
   $test$insert into public.profiles (id, badge_number)
-    values ('00000000-0000-4000-8000-000000000001', '__duplicate_id__')$test$,
+    values ('00000000-0000-4000-8000-000000000001', '900014')$test$,
   '23505', '14 - profile identity is the primary key'
 );
 select pg_temp.expect_sqlstate(
   $test$insert into public.profiles (id, badge_number)
-    values ('00000000-0000-4000-8000-000000000007', '__missing_auth_user__')$test$,
+    values ('00000000-0000-4000-8000-000000000007', '900015')$test$,
   '23503', '15 - profiles must reference an existing auth user'
 );
 select pg_temp.expect_sqlstate(
   $test$insert into public.profiles (id, badge_number, role)
-    values ('00000000-0000-4000-8000-000000000006', '__unknown_role__', 'owner')$test$,
+    values ('00000000-0000-4000-8000-000000000006', '900016', 'owner')$test$,
   '22P02', '16 - roles outside the enum are rejected'
 );
 
@@ -261,13 +261,13 @@ select pg_temp.assert_true(
 );
 select pg_temp.assert_affected(
   $test$update public.profiles
-    set first_name = 'Edited', last_name = 'Agent', badge_number = '__agent_edited__'
+    set first_name = 'Edited', last_name = 'Agent', badge_number = '000101'
     where id = '00000000-0000-4000-8000-000000000001'$test$,
   1, '22 - an agent can edit their own personal fields'
 );
 select pg_temp.assert_true(
   (select first_name = 'Edited' and last_name = 'Agent'
-      and badge_number = '__agent_edited__'
+      and badge_number = '000101'
       and updated_at = pg_catalog.now() and updated_at > created_at
       and created_at = '2000-01-01'::timestamptz
     from public.profiles
@@ -306,7 +306,7 @@ select pg_temp.expect_sqlstate(
 );
 select pg_temp.expect_sqlstate(
   $test$insert into public.profiles (id, badge_number)
-    values ('00000000-0000-4000-8000-000000000006', '__client_insert__')$test$,
+    values ('00000000-0000-4000-8000-000000000006', '900030')$test$,
   '42501', '30 - clients cannot provision profiles'
 );
 select pg_temp.expect_sqlstate(
@@ -384,7 +384,7 @@ select pg_temp.assert_true(
   '43 - admin access changes persist without changing personal fields'
 );
 select pg_temp.expect_sqlstate(
-  $test$update public.profiles set badge_number = '__admin_badge_edit__'
+  $test$update public.profiles set badge_number = '900044'
     where id = '00000000-0000-4000-8000-000000000002'$test$,
   '42501', '44 - an admin cannot edit another badge number'
 );
@@ -450,6 +450,84 @@ select pg_temp.assert_true(
   '54 - trusted provisioning changes are visible to the database owner'
 );
 
-select 'All 54 profiles schema and RLS checks passed; rolling back fixtures.'
+select pg_temp.assert_true(
+  (select data_type = 'text' from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles'
+      and column_name = 'badge_number')
+  and (select convalidated from pg_catalog.pg_constraint
+    where conrelid = 'public.profiles'::regclass
+      and conname = 'profiles_badge_number_digits_only'),
+  '55 - badge numbers remain text with a validated digits-only constraint'
+);
+select pg_temp.assert_true(
+  (select badge_number = '000101' from public.profiles
+    where id = '00000000-0000-4000-8000-000000000001'),
+  '56 - badge updates preserve leading zeros exactly'
+);
+
+insert into public.profiles (id, badge_number) values
+  ('00000000-0000-4000-8000-000000000006', '101');
+
+select pg_temp.assert_true(
+  (select count(distinct badge_number) = 2 from public.profiles
+    where id in ('00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000006')
+      and badge_number in ('000101', '101')),
+  '57 - leading zeros distinguish different badge identities'
+);
+select pg_temp.assert_affected(
+  $test$update public.profiles set badge_number = '0'
+    where id = '00000000-0000-4000-8000-000000000006'$test$,
+  1, '58 - a badge consisting of a single zero is valid'
+);
+select pg_temp.assert_affected(
+  $test$update public.profiles
+    set badge_number = '1234567890123456789012345678901234567890'
+    where id = '00000000-0000-4000-8000-000000000006'$test$,
+  1, '59 - digit strings are not converted to bounded numeric types'
+);
+
+select pg_temp.expect_sqlstate(
+  pg_catalog.format(
+    'update public.profiles set badge_number = %L where id = %L',
+    invalid_badge,
+    '00000000-0000-4000-8000-000000000006'
+  ),
+  '23514', test_name
+)
+from (values
+  ('', '60 - empty badge numbers are rejected'),
+  (' ', '61 - whitespace-only badge numbers are rejected'),
+  (' 00123', '62 - leading whitespace is rejected'),
+  ('00123 ', '63 - trailing whitespace is rejected'),
+  ('12a', '64 - trailing letters are rejected'),
+  ('a12', '65 - leading letters are rejected'),
+  ('-12', '66 - negative signs are rejected'),
+  ('+12', '67 - positive signs are rejected'),
+  ('12.0', '68 - decimal separators are rejected'),
+  ('12_3', '69 - underscores are rejected'),
+  ('1 23', '70 - internal whitespace is rejected'),
+  (E'12\n', '71 - trailing newlines are rejected'),
+  ('١٢٣', '72 - Arabic-Indic digits are rejected'),
+  ('１２３', '73 - fullwidth digits are rejected')
+) as invalid_badges(invalid_badge, test_name);
+
+select pg_temp.assert_true(
+  (select badge_number = '1234567890123456789012345678901234567890'
+    from public.profiles
+    where id = '00000000-0000-4000-8000-000000000006'),
+  '74 - rejected updates do not rewrite the stored badge number'
+);
+
+delete from public.profiles
+where id = '00000000-0000-4000-8000-000000000006';
+
+select pg_temp.expect_sqlstate(
+  $test$insert into public.profiles (id, badge_number)
+    values ('00000000-0000-4000-8000-000000000006', 'AGENT-123')$test$,
+  '23514', '75 - nonnumeric profile inserts are rejected too'
+);
+
+select 'All 75 profiles schema and RLS checks passed; rolling back fixtures.'
   as result;
 rollback;

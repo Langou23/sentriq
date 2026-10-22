@@ -59,7 +59,7 @@ const secondUserId = "22222222-2222-4222-8222-222222222222";
 function profile(overrides = {}) {
   return {
     id: firstUserId,
-    badge_number: "QC-001",
+    badge_number: "000001",
     first_name: "Camille",
     last_name: "Tremblay",
     role: "agent",
@@ -170,7 +170,7 @@ for (const role of ["agent", "supervisor", "admin"]) {
       role,
     );
     assert.equal(result.id, firstUserId);
-    assert.equal(result.badgeNumber, "QC-001");
+    assert.equal(result.badgeNumber, "000001");
     assert.equal(result.firstName, "Camille");
     assert.equal(result.lastName, "Tremblay");
     assert.equal(result.role, role);
@@ -336,6 +336,35 @@ for (const [label, options] of [
     {
       profileReply: {
         data: { ...profile(), badge_number: undefined },
+        error: null,
+      },
+    },
+  ],
+  [
+    "alphabetic badge",
+    { profileReply: { data: profile({ badge_number: "ABC" }), error: null } },
+  ],
+  [
+    "alphanumeric badge",
+    { profileReply: { data: profile({ badge_number: "AG001" }), error: null } },
+  ],
+  [
+    "signed numeric badge",
+    {
+      profileReply: { data: profile({ badge_number: "+000001" }), error: null },
+    },
+  ],
+  [
+    "decimal numeric badge",
+    {
+      profileReply: { data: profile({ badge_number: "0.00001" }), error: null },
+    },
+  ],
+  [
+    "Unicode numeric badge",
+    {
+      profileReply: {
+        data: profile({ badge_number: "０００００１" }),
         error: null,
       },
     },

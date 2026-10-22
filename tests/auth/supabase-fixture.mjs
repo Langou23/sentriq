@@ -26,14 +26,14 @@ const fixturePassword = "fixture-password";
 const profileOverrides = new Map();
 const profiles = new Map(
   [
-    ["AGENT", "agent", true],
-    ["SUPERVISOR", "supervisor", true],
-    ["ADMIN", "admin", true],
-    ["MISSING", "agent", true],
-    ["INACTIVE", "agent", false],
-    ["PROFILE_ERROR", "agent", true],
-    ["UNKNOWN", "unknown", true],
-    ["LOGOUT_ERROR", "agent", false],
+    ["000001", "agent", true],
+    ["000002", "supervisor", true],
+    ["000003", "admin", true],
+    ["000004", "agent", true], // Missing profile.
+    ["000005", "agent", false], // Inactive profile.
+    ["000006", "agent", true], // Profile query failure.
+    ["000007", "unknown", true], // Unsupported role.
+    ["000008", "agent", false], // Auth revocation failure.
   ].map(([badge, role, isActive]) => [
     `${badge}@sentriq.local`,
     { id: randomUUID(), badge, role, is_active: isActive },
@@ -208,7 +208,7 @@ globalThis.fetch = async function fixtureFetch(input, init) {
   if (request.method === "POST" && url.pathname === "/auth/v1/logout") {
     const session = sessionFor(request);
     if (!session) return unauthorized();
-    if (session.profile.badge === "LOGOUT_ERROR") {
+    if (session.profile.badge === "000008") {
       return json(
         { code: "unexpected_failure", message: "Fixture revocation outage" },
         500,
@@ -232,10 +232,10 @@ globalThis.fetch = async function fixtureFetch(input, init) {
         403,
       );
     }
-    if (profile.badge === "PROFILE_ERROR" || override?.state === "error") {
+    if (profile.badge === "000006" || override?.state === "error") {
       return json({ message: "Fixture profile service is unavailable" }, 500);
     }
-    if (profile.badge === "MISSING" || override?.state === "missing") {
+    if (profile.badge === "000004" || override?.state === "missing") {
       return json([]);
     }
     return json([

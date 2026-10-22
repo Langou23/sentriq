@@ -234,9 +234,10 @@ const { badgeNumberToEmail, validateSignIn } = loadTypeScript(
 );
 
 for (const [badge, email] of [
-  ["  abC-001  ", "ABC-001@sentriq.local"],
+  ["  000001  ", "000001@sentriq.local"],
   ["00042", "00042@sentriq.local"],
-  ["\tqc_73\n", "QC_73@sentriq.local"],
+  ["\t0073\n", "0073@sentriq.local"],
+  ["0", "0@sentriq.local"],
 ]) {
   test(`badge normalization preserves the identifier: ${JSON.stringify(badge)}`, () => {
     assert.equal(badgeNumberToEmail(badge), email);
@@ -251,31 +252,92 @@ function assertBilingual(message) {
   assert.notEqual(message.fr, message.en);
 }
 
+const nonDigitBadgeNumbers = [
+  ["letters", "ABC"],
+  ["letters and digits", "AG001"],
+  ["hyphen", "000-001"],
+  ["underscore", "000_001"],
+  ["leading plus", "+000001"],
+  ["leading minus", "-000001"],
+  ["decimal notation", "0.00001"],
+  ["exponent notation", "1e6"],
+  ["hexadecimal notation", "0x10"],
+  ["slash", "000001/"],
+  ["Arabic-Indic digits", "٠٠٠٠٠١"],
+  ["Eastern Arabic digits", "۰۰۰۰۰۱"],
+  ["full-width digits", "０００００１"],
+  ["superscript digits", "⁰⁰⁰⁰⁰¹"],
+];
+
+for (const badgeNumber of [
+  "0",
+  "000000",
+  "000001",
+  "123456",
+  "123456789012345678901234567890",
+]) {
+  test(`numeric badge validation preserves every digit of ${badgeNumber}`, () => {
+    const result = validateSignIn({ badgeNumber, password: "password" });
+    assert.equal(result.success, true);
+    assert.equal(result.data.badgeNumber, badgeNumber);
+    assert.equal(
+      badgeNumberToEmail(result.data.badgeNumber),
+      `${badgeNumber}@sentriq.local`,
+    );
+  });
+}
+
+for (const [label, badgeNumber] of nonDigitBadgeNumbers) {
+  test(`badge-to-email conversion refuses ${label}`, () => {
+    assert.throws(
+      () => badgeNumberToEmail(badgeNumber),
+      (error) => error instanceof Error && error.name === "ZodError",
+    );
+  });
+
+  test(`numeric badge validation rejects ${label} with a bilingual field error`, () => {
+    const result = validateSignIn({ badgeNumber, password: "password" });
+    assert.equal(result.success, false);
+    assertBilingual(result.fieldErrors.badgeNumber);
+    assert.equal(Object.hasOwn(result, "data"), false);
+  });
+
+  test(`signIn rejects a badge containing ${label} before contacting Auth`, async () => {
+    const harness = actionHarness();
+    const result = await harness.signIn(badgeNumber, "password");
+    assertAuthError(result, "invalid_input");
+    assertBilingual(result.fieldErrors.badgeNumber);
+    assert.deepEqual(harness.calls.clients, []);
+    assert.deepEqual(harness.calls.signIns, []);
+    assert.deepEqual(harness.calls.revalidations, []);
+  });
+}
+
 test("Zod validation trims the badge without changing password contents", () => {
   const result = validateSignIn({
-    badgeNumber: "  qc-001  ",
+    badgeNumber: "  000001  ",
     password: "  password  ",
   });
   assert.equal(result.success, true);
   assert.equal(result.data.badgeNumber.trim(), result.data.badgeNumber);
-  assert.equal(result.data.badgeNumber.toUpperCase(), "QC-001");
+  assert.equal(result.data.badgeNumber, "000001");
   assert.equal(result.data.password, "  password  ");
 });
 
 test("Zod validation does not trim a nonempty whitespace password", () => {
-  const result = validateSignIn({ badgeNumber: "AG001", password: " " });
+  const result = validateSignIn({ badgeNumber: "000001", password: " " });
   assert.equal(result.success, true);
   assert.equal(result.data.password, " ");
 });
 
 for (const [field, values] of [
-  ["badgeNumber", ["", " \t ", "AG 001", "someone@example.com", null, 42]],
+  ["badgeNumber", ["", " \t ", "00 001", "someone@example.com", null, 42]],
   ["password", ["", null, 42]],
 ]) {
   for (const value of values) {
     test(`Zod validation returns bilingual ${field} errors for ${JSON.stringify(value)}`, () => {
       const result = validateSignIn({
-        badgeNumber: "AG001",
+        badgeNumber: "000001",
         password: "password",
         [field]: value,
       });
@@ -299,13 +361,13 @@ for (const [label, badge, password] of [
   ["empty badge", "", "password"],
   ["blank badge", " \t ", "password"],
   ["email instead of badge", "someone@example.com", "password"],
-  ["internal whitespace", "AG 001", "password"],
-  ["embedded newline", "AG\n001", "password"],
-  ["empty password", "AG001", ""],
-  ["non-string badge", { badge: "AG001" }, "password"],
+  ["internal whitespace", "00 001", "password"],
+  ["embedded newline", "00\n001", "password"],
+  ["empty password", "000001", ""],
+  ["non-string badge", { badge: "000001" }, "password"],
   ["null badge", null, "password"],
-  ["non-string password", "AG001", 12345],
-  ["undefined password", "AG001", undefined],
+  ["non-string password", "000001", 12345],
+  ["undefined password", "000001", undefined],
 ]) {
   test(`signIn rejects ${label} before creating a client`, async () => {
     const harness = actionHarness();
@@ -318,7 +380,7 @@ for (const [label, badge, password] of [
 test("signIn normalizes the badge, preserves password whitespace and redirects", async () => {
   const harness = actionHarness();
   await assert.rejects(
-    harness.signIn("  qc-001  ", "  password  "),
+    harness.signIn("  000001  ", "  password  "),
     (error) => {
       assert.ok(error instanceof RedirectSignal);
       assert.equal(error.location, "/agent");
@@ -327,7 +389,7 @@ test("signIn normalizes the badge, preserves password whitespace and redirects",
   );
   assert.deepEqual(harness.calls.clients, [{ deferred: true }]);
   assert.deepEqual(harness.calls.signIns, [
-    { email: "QC-001@sentriq.local", password: "  password  " },
+    { email: "000001@sentriq.local", password: "  password  " },
   ]);
   assert.deepEqual(harness.calls.revalidations, [["/", "layout"]]);
   assert.deepEqual(harness.calls.profiles, [
@@ -351,7 +413,7 @@ for (const [role, target] of [
     const harness = actionHarness({
       profileReply: { data: { role, is_active: true }, error: null },
     });
-    await assert.rejects(harness.signIn("AG001", "password"), (error) => {
+    await assert.rejects(harness.signIn("000001", "password"), (error) => {
       assert.ok(error instanceof RedirectSignal);
       assert.equal(error.location, target);
       return true;
@@ -374,7 +436,7 @@ for (const [label, profile] of [
     const harness = actionHarness({
       profileReply: { data: profile, error: null },
     });
-    const result = await harness.signIn("AG001", "password");
+    const result = await harness.signIn("000001", "password");
     assertAuthError(result, "account_disabled");
     assert.deepEqual(result.message, {
       fr: "Compte désactivé, contactez votre superviseur.",
@@ -408,9 +470,9 @@ for (const [label, profileReply] of [
 ]) {
   test(`signIn fails closed and clears the session for ${label}`, async () => {
     const harness = actionHarness({ profileReply });
-    const result = await harness.signIn("AG001", "password");
+    const result = await harness.signIn("000001", "password");
     assertAuthError(result, "service_unavailable");
-    assert.doesNotMatch(JSON.stringify(result), /SQL|owner|AG001|password/);
+    assert.doesNotMatch(JSON.stringify(result), /SQL|owner|000001|password/);
     assert.deepEqual(harness.calls.signOuts, [{ scope: "local" }]);
     assert.equal(harness.calls.commits, 0);
     assert.equal(harness.calls.clears, 1);
@@ -422,7 +484,7 @@ test("signIn clears staged cookies when the profile lookup throws", async () => 
   const harness = actionHarness({
     profileThrows: new Error("private diagnostic"),
   });
-  const result = await harness.signIn("AG001", "password");
+  const result = await harness.signIn("000001", "password");
   assertAuthError(result, "service_unavailable");
   assert.doesNotMatch(JSON.stringify(result), /private diagnostic/);
   assert.deepEqual(harness.calls.signOuts, [{ scope: "local" }]);
@@ -440,7 +502,7 @@ for (const failure of [
       ...failure,
       profileReply: { data: { role: "agent", is_active: false }, error: null },
     });
-    const result = await harness.signIn("AG001", "password");
+    const result = await harness.signIn("000001", "password");
     assertAuthError(result, "account_disabled");
     assert.equal(harness.calls.commits, 0);
     assert.equal(harness.calls.clears, 1);
@@ -454,7 +516,7 @@ test("rejected profile reports service failure if browser cookies cannot be clea
     profileReply: { data: null, error: null },
     clearThrows: new Error("private cookie persistence diagnostic"),
   });
-  const result = await harness.signIn("AG001", "password");
+  const result = await harness.signIn("000001", "password");
   assertAuthError(result, "service_unavailable");
   assert.equal(harness.calls.commits, 0);
   assert.equal(harness.calls.clears, 1);
@@ -470,7 +532,7 @@ test("signIn does not redirect when committing session cookies fails", async () 
   const harness = actionHarness({
     commitThrows: new Error("Cookie store failure"),
   });
-  const result = await harness.signIn("AG001", "password");
+  const result = await harness.signIn("000001", "password");
   assertAuthError(result, "service_unavailable");
   assert.equal(harness.calls.commits, 1);
   assert.equal(harness.calls.clears, 1);
@@ -487,7 +549,7 @@ for (const status of [400, 401, 422, 429, 500, undefined]) {
         error: { status, message: "private upstream diagnostic" },
       },
     });
-    const result = await harness.signIn("AG001", "test-secret-password-value");
+    const result = await harness.signIn("000001", "test-secret-password-value");
     assertAuthError(
       result,
       !status || status === 429 || status >= 500
@@ -496,7 +558,7 @@ for (const status of [400, 401, 422, 429, 500, undefined]) {
     );
     assert.doesNotMatch(
       JSON.stringify(result),
-      /upstream|test-secret-password-value|AG001/,
+      /upstream|test-secret-password-value|000001/,
     );
     assert.deepEqual(harness.calls.revalidations, []);
     assert.equal(harness.calls.commits, 0);
@@ -517,7 +579,7 @@ for (const data of [
   test(`signIn rejects a response missing ${data.user ? "session" : "user"}`, async () => {
     const harness = actionHarness({ signInReply: { data, error: null } });
     assertAuthError(
-      await harness.signIn("AG001", "password"),
+      await harness.signIn("000001", "password"),
       "invalid_credentials",
     );
     assert.deepEqual(harness.calls.revalidations, []);
@@ -529,7 +591,7 @@ for (const failure of ["clientThrows", "signInThrows"]) {
     const harness = actionHarness({
       [failure]: new Error("private diagnostic"),
     });
-    const result = await harness.signIn("AG001", "password");
+    const result = await harness.signIn("000001", "password");
     assertAuthError(result, "service_unavailable");
     assert.doesNotMatch(JSON.stringify(result), /private diagnostic/);
     assert.deepEqual(harness.calls.revalidations, []);
@@ -550,6 +612,18 @@ test("signInFromForm validates both empty fields without leaking submitted value
   assert.equal(Object.hasOwn(result, "badgeNumber"), false);
 });
 
+test("signInFromForm rejects an alphanumeric badge even if submitted outside the numeric input", async () => {
+  const harness = actionHarness();
+  const formData = new FormData();
+  formData.set("badgeNumber", "AG001");
+  formData.set("password", "password");
+  const result = await harness.signInFromForm(null, formData);
+  assertAuthError(result, "invalid_input");
+  assertBilingual(result.fieldErrors.badgeNumber);
+  assert.deepEqual(harness.calls.clients, []);
+  assert.deepEqual(harness.calls.signIns, []);
+});
+
 test("signInFromForm forwards the original password and redirects according to profile role", async () => {
   const harness = actionHarness({
     profileReply: {
@@ -558,7 +632,7 @@ test("signInFromForm forwards the original password and redirects according to p
     },
   });
   const formData = new FormData();
-  formData.set("badgeNumber", "  qc-001  ");
+  formData.set("badgeNumber", "  000001  ");
   formData.set("password", "  preserve password  ");
   await assert.rejects(harness.signInFromForm(null, formData), (error) => {
     assert.ok(error instanceof RedirectSignal);
@@ -566,7 +640,7 @@ test("signInFromForm forwards the original password and redirects according to p
     return true;
   });
   assert.deepEqual(harness.calls.signIns, [
-    { email: "QC-001@sentriq.local", password: "  preserve password  " },
+    { email: "000001@sentriq.local", password: "  preserve password  " },
   ]);
   assert.equal(harness.calls.commits, 1);
 });
@@ -579,13 +653,13 @@ test("signInFromForm returns generic authentication failures without password or
     },
   });
   const formData = new FormData();
-  formData.set("badgeNumber", "QC-001");
+  formData.set("badgeNumber", "000001");
   formData.set("password", "private-password-value");
   const result = await harness.signInFromForm(null, formData);
   assertAuthError(result, "invalid_credentials");
   assert.doesNotMatch(
     JSON.stringify(result),
-    /User not found|QC-001|private-password-value/,
+    /User not found|000001|private-password-value/,
   );
   assert.equal(Object.hasOwn(result, "fieldErrors"), false);
   assert.equal(harness.calls.commits, 0);
@@ -604,7 +678,7 @@ for (const field of ["badgeNumber", "password"]) {
   test(`signInFromForm rejects a file supplied as ${field}`, async () => {
     const harness = actionHarness();
     const formData = new FormData();
-    formData.set("badgeNumber", "AG001");
+    formData.set("badgeNumber", "000001");
     formData.set("password", "password");
     formData.set(field, new Blob(["private upload content"]), "unexpected.txt");
     const result = await harness.signInFromForm(null, formData);

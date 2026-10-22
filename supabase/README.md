@@ -17,6 +17,17 @@ L'exécution manuelle dans SQL Editor n'enregistre pas automatiquement la versio
 dans l'historique de migration de la CLI. Si la CLI est adoptée plus tard,
 synchroniser cet historique avant tout `db push` ; ne pas réexécuter ce SQL.
 
+### Matricules numériques
+
+Après le modèle des profils, exécuter aussi la migration
+[`migrations/20261022210328_require_numeric_badge_numbers.sql`](migrations/20261022210328_require_numeric_badge_numbers.sql)
+dans SQL Editor avec le rôle `postgres`. Elle impose uniquement les chiffres `0–9`.
+`badge_number` reste de type `text` pour conserver les zéros initiaux (`000001`).
+Si des matricules existants contiennent d'autres caractères, la transaction échoue
+sans modifier les données ; le commentaire SQL fournit une requête de diagnostic.
+Corriger ces identités et leurs emails Auth correspondants de façon explicite avant
+de réexécuter la migration. Aucun compte hébergé n'est créé par les fixtures locales.
+
 ### Accès applicatifs
 
 | Identité     | Lecture          | Mise à jour                                                      |
@@ -57,6 +68,16 @@ The file contains a complete transaction to run once:
 Running SQL manually in SQL Editor does not automatically record its version in
 the CLI migration history. If the CLI is adopted later, synchronize that history
 before any `db push`; do not rerun this SQL.
+
+### Numeric badge numbers
+
+After the profiles model, also run
+[`migrations/20261022210328_require_numeric_badge_numbers.sql`](migrations/20261022210328_require_numeric_badge_numbers.sql)
+in SQL Editor using the `postgres` role. It requires digits `0–9` only.
+`badge_number` stays `text` to preserve leading zeros (`000001`). If existing badges
+contain other characters, the transaction fails without changing their data; a
+SQL comment provides a diagnostic query. Resolve those identities and their matching
+Auth emails explicitly before rerunning it. Local fixtures create no hosted accounts.
 
 ### Application access
 

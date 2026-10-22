@@ -15,8 +15,11 @@
 | `@/modules/auth/page-loading`    | État d'attente bilingue `AuthPageLoading`.                     |
 | `@/modules/auth/sign-out-button` | Composant public `SignOutButton` pour l'action existante.      |
 
-`badgeNumberToEmail("  ab-001  ")` retourne `AB-001@sentriq.local`.
-La normalisation conserve les zéros initiaux et ne modifie jamais le mot de passe.
+`badgeNumberToEmail("  000001  ")` retourne `000001@sentriq.local`.
+Les matricules contiennent uniquement les chiffres `0–9` ; la validation refuse
+les lettres, signes, décimales et autres caractères. Ils restent des chaînes de
+caractères pour conserver les zéros initiaux. La normalisation retire les espaces
+extérieurs et ne modifie jamais le mot de passe.
 Le compte Supabase Auth doit déjà exister avec cet email synthétique : ces actions
 ne créent ni compte ni profil.
 
@@ -110,8 +113,10 @@ Actions après connexion ou déconnexion utilisent HTTP 303.
 | `@/modules/auth/page-loading`    | Bilingual `AuthPageLoading` pending state.                      |
 | `@/modules/auth/sign-out-button` | Public `SignOutButton` for the existing action.                 |
 
-`badgeNumberToEmail("  ab-001  ")` returns `AB-001@sentriq.local`.
-Normalization preserves leading zeros and never changes the password.
+`badgeNumberToEmail("  000001  ")` returns `000001@sentriq.local`.
+Badge numbers contain only digits `0–9`; validation rejects letters, signs,
+decimals, and other characters. They remain strings to preserve leading zeros.
+Normalization trims surrounding whitespace and never changes the password.
 The Supabase Auth account must already exist with that synthetic email: these
 actions create neither accounts nor profiles.
 

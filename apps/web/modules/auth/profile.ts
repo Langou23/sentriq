@@ -14,7 +14,7 @@ export const profileAccessSchema = z.object({
 
 export const profileSchema = profileAccessSchema.extend({
   id: z.uuid(),
-  badge_number: z.string().min(1),
+  badge_number: z.string().regex(/^[0-9]+$/u),
   first_name: z.string().nullable(),
   last_name: z.string().nullable(),
 });

@@ -20,6 +20,9 @@ These conventions apply throughout this repository.
 - Avoid `any`. If it is unavoidable, keep its scope narrow and add a nearby English
   comment explaining why a safer type cannot be used.
 - Prefer `unknown` with validation or narrowing, explicit domain types, and generics.
+- Badge numbers (matricules) contain only digits `0–9`. Keep them as strings in
+  forms, application code, and storage so leading zeros are preserved; never coerce
+  them to JavaScript numbers or use alphabetic identifiers in demo accounts.
 
 ## Modular monolith
 

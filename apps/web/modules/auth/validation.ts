@@ -1,12 +1,15 @@
 import { z } from "zod";
 import type { AuthFieldErrors, AuthMessage } from "./types";
 
+// Badge numbers are digit identifiers: never coerce them to JavaScript numbers.
+export const badgeNumberSchema = z
+  .string({ error: "badge_required" })
+  .trim()
+  .min(1, { error: "badge_required" })
+  .regex(/^[0-9]+$/u, { error: "badge_invalid" });
+
 const signInSchema = z.object({
-  badgeNumber: z
-    .string({ error: "badge_required" })
-    .trim()
-    .min(1, { error: "badge_required" })
-    .regex(/^[^\s@]+$/u, { error: "badge_invalid" }),
+  badgeNumber: badgeNumberSchema,
   // Passwords must retain every character, including surrounding whitespace.
   password: z
     .string({ error: "password_required" })
@@ -19,8 +22,8 @@ const messages: Record<string, AuthMessage> = {
     en: "Enter your badge number.",
   },
   badge_invalid: {
-    fr: "Saisissez un matricule valide.",
-    en: "Enter a valid badge number.",
+    fr: "Le matricule doit contenir uniquement des chiffres (0–9).",
+    en: "Badge numbers must contain digits only (0–9).",
   },
   password_required: {
     fr: "Saisissez votre mot de passe.",

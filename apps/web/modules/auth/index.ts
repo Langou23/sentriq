@@ -1,3 +1,5 @@
+import { badgeNumberSchema } from "./validation";
+
 export type {
   AuthActionError,
   AuthErrorCode,
@@ -9,5 +11,5 @@ export type {
 export { validateSignIn } from "./validation";
 
 export function badgeNumberToEmail(badgeNumber: string): string {
-  return `${badgeNumber.trim().toUpperCase()}@sentriq.local`;
+  return `${badgeNumberSchema.parse(badgeNumber)}@sentriq.local`;
 }

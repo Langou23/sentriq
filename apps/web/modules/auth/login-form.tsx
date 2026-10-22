@@ -46,8 +46,9 @@ export function LoginForm() {
           id="badgeNumber"
           name="badgeNumber"
           type="text"
+          inputMode="numeric"
+          pattern="[0-9]+"
           autoComplete="username"
-          autoCapitalize="characters"
           spellCheck={false}
           required
           disabled={pending}
@@ -55,10 +56,18 @@ export function LoginForm() {
           onChange={(event) => setBadgeNumber(event.target.value)}
           aria-invalid={Boolean(fieldErrors?.badgeNumber)}
           aria-describedby={
-            fieldErrors?.badgeNumber ? "badgeNumber-error" : undefined
+            fieldErrors?.badgeNumber
+              ? "badgeNumber-hint badgeNumber-error"
+              : "badgeNumber-hint"
           }
           className={inputClassName}
         />
+        <p id="badgeNumber-hint" className="text-xs text-muted-foreground">
+          Chiffres uniquement (0–9).
+          <span lang="en" className="mt-1 block">
+            Digits only (0–9).
+          </span>
+        </p>
         {fieldErrors?.badgeNumber && (
           <p id="badgeNumber-error" className="text-sm text-destructive">
             <MessageText message={fieldErrors.badgeNumber} />
