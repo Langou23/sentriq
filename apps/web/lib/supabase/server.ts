@@ -4,7 +4,9 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { getSupabaseConfig } from "./config";
 
-export async function createClient() {
+export async function createClient({
+  requireCookieWrites = false,
+}: { requireCookieWrites?: boolean } = {}) {
   const { url, anonKey } = getSupabaseConfig();
   const cookieStore = await cookies();
 
@@ -18,9 +20,13 @@ export async function createClient() {
           for (const { name, value, options } of cookiesToSet) {
             cookieStore.set(name, value, options);
           }
-        } catch {
-          // Server Components cannot write cookies. Add session refresh in a
-          // Proxy when implementing sign-in; authentication is not enabled yet.
+        } catch (error) {
+          if (requireCookieWrites) {
+            throw error;
+          }
+
+          // Server Components cannot write cookies; the Proxy refreshes sessions.
+          // Server Actions require successful writes instead of hiding failures.
         }
       },
     },

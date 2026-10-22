@@ -37,6 +37,9 @@ Exécuter toutes les commandes depuis la racine du monorepo :
 | `npm run typecheck` | Vérifier les types et les routes Next.js. |
 
 L'application est accessible par défaut sur [localhost:3000](http://localhost:3000).
+Sans session, les routes protégées redirigent vers `/login`, dont la page sera
+créée à une prochaine étape. La plomberie est décrite dans le
+[module auth](apps/web/modules/auth/README.md).
 Sous PowerShell, utiliser `npm.cmd` si l'exécution de `npm.ps1` est bloquée.
 Arrêter le serveur de développement avant de lancer un build de production.
 
@@ -87,7 +90,7 @@ Fondations et fonctionnalités prévues pour la v1 :
 ### Statut
 
 - **Bloc 01 (Fondations) : terminé.**
-- **Bloc 02 (Auth) : à venir.**
+- **Bloc 02 (Auth) : en cours — modèle de données et plomberie de session ; interface à venir.**
 
 ## English
 
@@ -124,6 +127,9 @@ Run all commands from the monorepo root:
 | `npm run typecheck` | Check types and generated Next.js routes. |
 
 The application is available at [localhost:3000](http://localhost:3000) by default.
+Without a session, protected routes redirect to `/login`, whose page will be
+created in a later step. Session plumbing is documented in the
+[auth module](apps/web/modules/auth/README.md).
 In PowerShell, use `npm.cmd` if running `npm.ps1` is blocked.
 Stop the development server before running a production build.
 
@@ -174,4 +180,4 @@ Foundations and features planned for v1:
 ### Status
 
 - **Block 01 (Foundations): complete.**
-- **Block 02 (Auth): upcoming.**
+- **Block 02 (Auth): in progress — data model and session plumbing; interface upcoming.**
