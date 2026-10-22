@@ -3,6 +3,8 @@ export type {
   AuthErrorCode,
   AuthFieldErrors,
   AuthMessage,
+  AuthProfile,
+  UserRole,
 } from "./types";
 export { validateSignIn } from "./validation";
 

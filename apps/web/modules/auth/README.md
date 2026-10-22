@@ -4,12 +4,16 @@
 
 ### Interface publique
 
-| Point d'entrée              | Usage                                                          |
-| --------------------------- | -------------------------------------------------------------- |
-| `@/modules/auth`            | `badgeNumberToEmail`, `validateSignIn` et types sérialisables. |
-| `@/modules/auth/actions`    | Server Actions `signIn`, `signInFromForm` et `signOut`.        |
-| `@/modules/auth/login-form` | Composant public `LoginForm`, utilisé par `/login`.            |
-| `@/modules/auth/proxy`      | Adaptateur de session `updateSession` pour le proxy Next.js.   |
+| Point d'entrée                   | Usage                                                          |
+| -------------------------------- | -------------------------------------------------------------- |
+| `@/modules/auth`                 | `badgeNumberToEmail`, `validateSignIn` et types sérialisables. |
+| `@/modules/auth/actions`         | Server Actions `signIn`, `signInFromForm` et `signOut`.        |
+| `@/modules/auth/login-form`      | Composant public `LoginForm`, utilisé par `/login`.            |
+| `@/modules/auth/proxy`           | Adaptateur de session `updateSession` pour le proxy Next.js.   |
+| `@/modules/auth/server`          | Contrôles serveur `requireProfile` et `redirectToRoleHome`.    |
+| `@/modules/auth/role-home`       | Page temporaire serveur `RoleHome`, protégée par rôle.         |
+| `@/modules/auth/page-loading`    | État d'attente bilingue `AuthPageLoading`.                     |
+| `@/modules/auth/sign-out-button` | Composant public `SignOutButton` pour l'action existante.      |
 
 `badgeNumberToEmail("  ab-001  ")` retourne `AB-001@sentriq.local`.
 La normalisation conserve les zéros initiaux et ne modifie jamais le mot de passe.
@@ -20,7 +24,7 @@ Les actions renvoient une erreur générique `{ success: false, code, message }`
 avec `message.fr` et `message.en` en cas d'échec. Elles ne renvoient aucun jeton
 ni erreur brute Supabase. Zod valide les champs non vides côté serveur et fournit
 des erreurs de champ FR/EN sans renvoyer le mot de passe. Le formulaire reprend
-l'affichage simultané FR puis EN de l'accueil, avec `lang="en"` sur les traductions.
+l'affichage simultané FR puis EN, avec `lang="en"` sur les traductions.
 Les identifiants refusés produisent toujours « Matricule ou mot de passe invalide. ».
 
 Après authentification, `signIn` lit `role,is_active` dans `public.profiles` pour
@@ -32,8 +36,11 @@ Les nouveaux cookies de session restent différés jusqu'à validation du profil
 ils sont supprimés en cas de refus, même si la révocation distante échoue.
 
 Un profil actif redirige vers `/agent` (agent), `/dispatch` (supervisor) ou `/admin`
-(admin). Ces destinations retournent une 404 jusqu'à l'étape 4. `signOut` redirige
-vers `/login`. Les actions invalident le cache des layouts et la déconnexion est
+(admin). Ces pages protégées affichent temporairement le nom, le rôle et la
+déconnexion en français et en anglais ; le matricule remplace un nom absent.
+`SignOutButton` utilise l'action existante et affiche aussi les états d'attente
+et les erreurs dans les deux langues. `signOut` redirige vers `/login`.
+Les actions invalident le cache des layouts et la déconnexion est
 limitée à la session courante (`scope: "local"`). Elles exigent l'écriture effective
 des cookies ; un échec ne peut pas être présenté comme une connexion réussie.
 
@@ -59,21 +66,49 @@ restent protégés. Ajouter les futurs assets publics à ce périmètre plutôt 
 d'exclure tous les chemins contenant une extension.
 
 `/login` retourne le formulaire avec HTTP 200. Le proxy vérifie la session Auth ;
-le contrôle de profil décrit ci-dessus intervient lors de la connexion. Les futures
-pages et opérations métier devront aussi vérifier leurs autorisations côté serveur,
-avec RLS au niveau des données : une redirection de connexion n'est pas une règle
-d'autorisation pour les opérations ultérieures.
+les pages par rôle vérifient aussi le profil actif côté serveur à chaque accès.
+Elles utilisent l'interface publique `@/modules/auth/role-home`, qui applique le
+contrôle de `@/modules/auth/server` avant d'afficher les données utilisateur.
+`requireProfile(expectedRole?)` appelle `auth.getUser()` auprès de Supabase Auth,
+puis lit le propre profil de cet utilisateur avec le client utilisateur soumis
+aux politiques RLS. Sans rôle attendu, il vérifie seulement l'identité et le profil
+actif. Avec un rôle attendu, il exige une correspondance exacte : un agent va sur
+`/agent`, un supervisor sur `/dispatch` et un admin sur `/admin`. Tout autre rôle
+valide est redirigé vers sa propre page ; le rôle admin n'implique aucun accès
+automatique aux deux autres pages.
+
+Une identité invalide, un profil absent, inactif ou mal formé, ou une erreur de
+vérification redirige vers `/login` sans afficher les données du profil. Ce
+contrôle dans un Server Component ne modifie pas les cookies du navigateur ;
+seuls les actions et l'adaptateur de session du proxy les modifient. L'identité
+et le profil ne sont jamais mis en cache entre les requêtes.
+
+L'accueil `/` appelle `redirectToRoleHome()` pour appliquer le même contrôle et
+rediriger vers la page du rôle. Les futurs modules doivent utiliser cette interface
+publique pour les contrôles de page, puis vérifier les autorisations propres à
+leurs opérations côté serveur et conserver RLS au niveau des données.
+
+Avec Cache Components, les contrôles liés à la requête sont placés dans `Suspense`
+avec l'attente bilingue `AuthPageLoading`. Une redirection peut être un HTTP 307
+ou, si l'enveloppe HTML est déjà envoyée, un HTTP 200 contenant la redirection
+streamée de Next.js (`meta` refresh). Le contrôle reste côté serveur et aucune
+donnée de profil n'est rendue avant son succès. Les redirections des Server
+Actions après connexion ou déconnexion utilisent HTTP 303.
 
 ## English
 
 ### Public interface
 
-| Entry point                 | Purpose                                                         |
-| --------------------------- | --------------------------------------------------------------- |
-| `@/modules/auth`            | `badgeNumberToEmail`, `validateSignIn`, and serializable types. |
-| `@/modules/auth/actions`    | `signIn`, `signInFromForm`, and `signOut` Server Actions.       |
-| `@/modules/auth/login-form` | Public `LoginForm` component, used by `/login`.                 |
-| `@/modules/auth/proxy`      | `updateSession` session adapter for the Next.js proxy.          |
+| Entry point                      | Purpose                                                         |
+| -------------------------------- | --------------------------------------------------------------- |
+| `@/modules/auth`                 | `badgeNumberToEmail`, `validateSignIn`, and serializable types. |
+| `@/modules/auth/actions`         | `signIn`, `signInFromForm`, and `signOut` Server Actions.       |
+| `@/modules/auth/login-form`      | Public `LoginForm` component, used by `/login`.                 |
+| `@/modules/auth/proxy`           | `updateSession` session adapter for the Next.js proxy.          |
+| `@/modules/auth/server`          | `requireProfile` and `redirectToRoleHome` server authorization. |
+| `@/modules/auth/role-home`       | Server-rendered `RoleHome` placeholder with a role guard.       |
+| `@/modules/auth/page-loading`    | Bilingual `AuthPageLoading` pending state.                      |
+| `@/modules/auth/sign-out-button` | Public `SignOutButton` for the existing action.                 |
 
 `badgeNumberToEmail("  ab-001  ")` returns `AB-001@sentriq.local`.
 Normalization preserves leading zeros and never changes the password.
@@ -83,8 +118,8 @@ actions create neither accounts nor profiles.
 On failure, actions return a generic `{ success: false, code, message }` error
 with `message.fr` and `message.en`. They return no tokens or raw Supabase errors.
 Zod validates nonempty fields on the server and returns bilingual field errors,
-never the password. The form follows the home page's simultaneous French then
-English presentation, marking translations with `lang="en"`. Rejected credentials
+never the password. The form presents French followed by English simultaneously,
+marking translations with `lang="en"`. Rejected credentials
 always produce “Invalid badge number or password.”.
 
 After authentication, `signIn` reads `role,is_active` from `public.profiles` for the
@@ -95,8 +130,11 @@ an unavailable-service message. New session cookies are deferred until the profi
 is approved; rejection clears them even if remote revocation fails.
 
 An active profile redirects to `/agent` (agent), `/dispatch` (supervisor), or `/admin`
-(admin). These destinations return 404 until step 4. `signOut` redirects to `/login`.
-Actions invalidate the layout cache. Sign-out ends only the current session
+(admin). These protected pages temporarily display the name, role, and sign-out
+action in French and English; the badge number replaces a missing name.
+`SignOutButton` calls the existing action and also displays pending states and
+errors in both languages. `signOut` redirects to `/login`. Actions invalidate
+the layout cache. Sign-out ends only the current session
 (`scope: "local"`). Actions require cookie writes to succeed; failed persistence
 cannot be reported as a successful sign-in.
 
@@ -121,9 +159,32 @@ protected. Add future public assets to this scope rather than excluding all
 paths with an extension.
 
 `/login` returns the form with HTTP 200. The proxy verifies the Auth session;
-the profile check described above runs at sign-in. Future role pages and business
-operations must also enforce authorization on the server, with RLS protecting data
-access: a sign-in redirect is not an authorization rule for later operations.
+role pages also verify the active profile on the server on every access.
+They use the public `@/modules/auth/role-home` interface, which applies the
+`@/modules/auth/server` guard before rendering user data.
+`requireProfile(expectedRole?)` calls `auth.getUser()` against Supabase Auth, then
+reads that user's own profile through the user client and RLS policies. Without an
+expected role, it verifies identity and the active profile. With an expected role,
+it requires an exact match: agents use `/agent`, supervisors use `/dispatch`, and
+admins use `/admin`. Any other valid role redirects to its own page; the admin
+role does not automatically grant access to the other two pages.
+
+An invalid identity, missing, inactive, or malformed profile, or verification
+failure redirects to `/login` without rendering profile data. This Server
+Component guard does not mutate browser cookies; actions and the proxy remain
+the only browser session cookie writers. Identity and profile state are never
+cached across requests.
+
+The `/` home route calls `redirectToRoleHome()` to apply the same checks and
+redirect to the role's page. Future modules must use this public interface for
+page checks, enforce their own operation-specific authorization on the server,
+and retain RLS protection for data access.
+
+With Cache Components, request-bound checks run inside `Suspense` with the
+bilingual `AuthPageLoading` fallback. A redirect can use HTTP 307 or, if the HTML
+shell has already been sent, HTTP 200 with a Next.js streamed redirect (`meta`
+refresh). Authorization still runs on the server, and no profile data renders
+before it succeeds. Server Action redirects after sign-in or sign-out use HTTP 303.
 
 ## References
 

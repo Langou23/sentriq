@@ -2,21 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { createClient, createSignInClient } from "@/lib/supabase/server";
 import { badgeNumberToEmail, validateSignIn } from "./index";
+import { profileAccessSchema, roleHomes } from "./profile";
 import type { AuthActionError, AuthErrorCode, AuthFieldErrors } from "./types";
-
-const profileSchema = z.object({
-  role: z.enum(["agent", "supervisor", "admin"]),
-  is_active: z.boolean(),
-});
-
-const destinations = {
-  agent: "/agent",
-  supervisor: "/dispatch",
-  admin: "/admin",
-} as const;
 
 function authenticationError(
   code: AuthErrorCode,
@@ -72,7 +61,7 @@ async function authenticate(input: unknown): Promise<AuthActionError> {
     return authenticationError("invalid_input", validation.fieldErrors);
 
   let context: Awaited<ReturnType<typeof createSignInClient>> | undefined;
-  let destination: (typeof destinations)[keyof typeof destinations];
+  let destination: (typeof roleHomes)[keyof typeof roleHomes];
 
   try {
     context = await createSignInClient();
@@ -103,10 +92,10 @@ async function authenticate(input: unknown): Promise<AuthActionError> {
     if (!profile || profile.is_active === false)
       return await rejectSession(context, "account_disabled");
 
-    const parsedProfile = profileSchema.safeParse(profile);
+    const parsedProfile = profileAccessSchema.safeParse(profile);
     if (!parsedProfile.success)
       return await rejectSession(context, "service_unavailable");
-    destination = destinations[parsedProfile.data.role];
+    destination = roleHomes[parsedProfile.data.role];
     context.commitSessionCookies();
   } catch {
     return context

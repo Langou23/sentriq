@@ -39,9 +39,13 @@ Exécuter toutes les commandes depuis la racine du monorepo :
 L'application est accessible par défaut sur [localhost:3000](http://localhost:3000).
 Sans session, les routes protégées redirigent vers le formulaire bilingue `/login`.
 Un compte Auth et un profil actif doivent déjà exister : la connexion redirige
-vers `/agent`, `/dispatch` ou `/admin` selon le rôle. Ces pages seront créées
-à l'étape 4 et retournent pour l'instant une 404. Le fonctionnement est décrit dans le
-[module auth](apps/web/modules/auth/README.md).
+vers `/agent` (agent), `/dispatch` (supervisor) ou `/admin` (admin). L'accueil `/`
+redirige aussi l'utilisateur connecté vers sa page. Chaque page affiche
+temporairement le nom, le rôle et une action de déconnexion en français et en
+anglais. Le contrôle serveur vérifie l'identité et le profil actif, puis renvoie
+tout autre rôle vers sa propre page, y compris pour un administrateur. La
+déconnexion redirige vers `/login`. Le fonctionnement et l'interface publique du
+module sont décrits dans le [module auth](apps/web/modules/auth/README.md).
 Sous PowerShell, utiliser `npm.cmd` si l'exécution de `npm.ps1` est bloquée.
 Arrêter le serveur de développement avant de lancer un build de production.
 
@@ -61,8 +65,8 @@ ne sont pas nécessaires pour cette configuration hébergée.
 | ----------- | --------------------------------------------------------------------- |
 | `apps/`     | Applications ; `apps/web/` contient l'application Next.js.            |
 | `packages/` | Réservé aux futurs packages partagés : UI, validation et code commun. |
-| `supabase/` | Réservé aux migrations versionnées et aux données initiales.          |
-| `tests/`    | Réservé aux tests ; `tests/e2e/` accueillera les tests Playwright.    |
+| `supabase/` | Migrations versionnées ; données initiales selon les besoins.         |
+| `tests/`    | Tests d'authentification ; `tests/e2e/` reste réservé à Playwright.   |
 | `docs/`     | Réservé à la documentation, avec `architecture/` et `decisions/`.     |
 
 Les conventions permanentes sont définies dans [AGENTS.md](AGENTS.md).
@@ -92,7 +96,7 @@ Fondations et fonctionnalités prévues pour la v1 :
 ### Statut
 
 - **Bloc 01 (Fondations) : terminé.**
-- **Bloc 02 (Auth) : en cours — modèle de données, session et connexion bilingue ; pages par rôle à venir.**
+- **Bloc 02 (Auth) : en cours — modèle de données, session, connexion bilingue et pages protégées par rôle présents.**
 
 ## English
 
@@ -131,8 +135,12 @@ Run all commands from the monorepo root:
 The application is available at [localhost:3000](http://localhost:3000) by default.
 Without a session, protected routes redirect to the bilingual `/login` form.
 An Auth account and an active profile must already exist: sign-in redirects to
-`/agent`, `/dispatch`, or `/admin` based on the role. These pages will be created
-in step 4 and currently return 404. The flow is documented in the
+`/agent` (agent), `/dispatch` (supervisor), or `/admin` (admin). The `/` home route
+also redirects signed-in users to their own page. Each page temporarily displays
+the name, role, and sign-out action in French and English. Server authorization
+verifies identity and the active profile, then redirects any other role to its own
+page, including administrators. Sign-out redirects to `/login`. The flow and the
+module's public interface are documented in the
 [auth module](apps/web/modules/auth/README.md).
 In PowerShell, use `npm.cmd` if running `npm.ps1` is blocked.
 Stop the development server before running a production build.
@@ -149,13 +157,13 @@ are not required for this hosted setup.
 
 ### Monorepo structure
 
-| Directory   | Purpose                                                            |
-| ----------- | ------------------------------------------------------------------ |
-| `apps/`     | Applications; `apps/web/` contains the Next.js application.        |
-| `packages/` | Reserved for shared packages: UI, validation, and common code.     |
-| `supabase/` | Reserved for versioned migrations and seed data.                   |
-| `tests/`    | Reserved for tests; `tests/e2e/` will contain Playwright tests.    |
-| `docs/`     | Reserved for documentation, with `architecture/` and `decisions/`. |
+| Directory   | Purpose                                                             |
+| ----------- | ------------------------------------------------------------------- |
+| `apps/`     | Applications; `apps/web/` contains the Next.js application.         |
+| `packages/` | Reserved for shared packages: UI, validation, and common code.      |
+| `supabase/` | Versioned migrations; seed data as needed.                          |
+| `tests/`    | Authentication tests; `tests/e2e/` remains reserved for Playwright. |
+| `docs/`     | Reserved for documentation, with `architecture/` and `decisions/`.  |
 
 Permanent conventions are defined in [AGENTS.md](AGENTS.md).
 CI checks lint, typecheck, and build on every push and pull request targeting `main`.
@@ -184,4 +192,4 @@ Foundations and features planned for v1:
 ### Status
 
 - **Block 01 (Foundations): complete.**
-- **Block 02 (Auth): in progress — data model, sessions, and bilingual sign-in; role pages upcoming.**
+- **Block 02 (Auth): in progress — data model, sessions, bilingual sign-in, and protected role pages are present.**

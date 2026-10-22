@@ -79,6 +79,24 @@ async function probe(pathname, { jar = new Map(), headers, ...options } = {}) {
   return response;
 }
 
+function actionFormData(form) {
+  const data = new FormData();
+  for (const match of form.matchAll(/<input\b[^>]*>/giu)) {
+    const input = attributes(match[0]);
+    if (
+      input.get("type") === "hidden" &&
+      input.get("name")?.startsWith("$ACTION_")
+    ) {
+      data.append(input.get("name"), input.get("value") ?? "");
+    }
+  }
+  assert.ok(
+    [...data.keys()].some((key) => /^\$ACTION_(?:REF|ID)_/u.test(key)),
+    "The test must submit Next.js's real Server Action metadata",
+  );
+  return data;
+}
+
 async function submit(badgeNumber, password) {
   const jar = new Map();
   const page = await probe("/login", { jar });
@@ -93,20 +111,7 @@ async function submit(badgeNumber, password) {
   const form = forms.find((match) => /name="badgeNumber"/u.test(match[0]));
   assert.ok(form, "The login page must contain the badge/password form");
 
-  const data = new FormData();
-  for (const match of form[0].matchAll(/<input\b[^>]*>/giu)) {
-    const input = attributes(match[0]);
-    if (
-      input.get("type") === "hidden" &&
-      input.get("name")?.startsWith("$ACTION_")
-    ) {
-      data.append(input.get("name"), input.get("value") ?? "");
-    }
-  }
-  assert.ok(
-    [...data.keys()].some((key) => /^\$ACTION_(?:REF|ID)_/u.test(key)),
-    "The test must submit Next.js's real Server Action metadata",
-  );
+  const data = actionFormData(form[0]);
   data.set("badgeNumber", badgeNumber);
   data.set("password", password);
 
@@ -122,6 +127,180 @@ async function submit(badgeNumber, password) {
     "The submitted password must never be echoed in the returned HTML",
   );
   return { response, jar, html: responseHtml, text: visibleText(responseHtml) };
+}
+
+async function expectPageRedirect(response, destination, label) {
+  const html = await response.text();
+  let location = response.headers.get("location");
+  if (response.status === 200) {
+    // Cache Components can flush the shell before an async server guard resolves.
+    // Next.js then encodes redirect() as its documented refresh meta element.
+    const refresh = [...html.matchAll(/<meta\b[^>]*>/giu)]
+      .map((match) => attributes(match[0]))
+      .find(
+        (candidate) =>
+          candidate.get("id") === "__next-page-redirect" &&
+          candidate.get("http-equiv")?.toLowerCase() === "refresh",
+      );
+    assert.ok(
+      refresh,
+      `${label}: a streamed response must contain Next's redirect marker`,
+    );
+    location = refresh
+      .get("content")
+      ?.match(/^\s*\d+(?:\.\d+)?\s*;\s*url=(.+)$/iu)?.[1];
+  } else {
+    assert.equal(response.status, 307, `${label}: server redirect status`);
+  }
+  assert.ok(location, `${label}: server redirect destination`);
+  assert.equal(
+    new URL(location, origin).href,
+    new URL(destination, origin).href,
+    `${label}: fixed server-side role destination`,
+  );
+  assert.doesNotMatch(
+    visibleText(html),
+    /Fixture\s+User/u,
+    `${label}: the rejected page must not render profile content`,
+  );
+  return response.status;
+}
+
+async function signOutFromPage(pathname, html, jar) {
+  const form = [...html.matchAll(/<form\b[^>]*>[\s\S]*?<\/form>/giu)].find(
+    (match) => /se déconnecter/iu.test(visibleText(match[0])),
+  );
+  assert.ok(
+    form,
+    "The protected page must expose its real sign-out action form",
+  );
+  assert.match(visibleText(form[0]), /sign out/iu, "English sign-out action");
+  const response = await probe(pathname, {
+    method: "POST",
+    body: actionFormData(form[0]),
+    headers: { origin: origin.origin, accept: "text/html" },
+    jar,
+  });
+  assert.equal(
+    response.status,
+    303,
+    "Sign-out must redirect from the Server Action",
+  );
+  assert.equal(
+    new URL(response.headers.get("location"), origin).pathname,
+    "/login",
+    "Sign-out returns to the login page",
+  );
+  expectNoSession(jar, "Sign-out");
+  const denied = await probe(pathname, { jar });
+  assert.equal(
+    denied.status,
+    307,
+    "A signed-out browser cannot reopen a protected page",
+  );
+  assert.equal(
+    new URL(denied.headers.get("location"), origin).pathname,
+    "/login",
+    "The proxy rejects the signed-out session",
+  );
+  console.log(
+    `Sign-out from ${pathname}: 303 → /login, cookies cleared, subsequent GET denied`,
+  );
+}
+
+async function setFixtureProfile(state, role) {
+  const response = await probe("/__sentriq_fixture__/profile", {
+    method: "POST",
+    headers: {
+      origin: origin.origin,
+      "content-type": "application/json",
+      "x-sentriq-test-fixture": "supabase",
+    },
+    body: JSON.stringify({ badge: "AGENT", state, ...(role ? { role } : {}) }),
+  });
+  assert.equal(
+    response.headers.get("x-sentriq-test-fixture"),
+    "supabase",
+    "Profile changes must be handled by the in-memory fixture preloader",
+  );
+  assert.equal(response.status, 204, "Fixture profile state updated in memory");
+}
+
+async function verifyExistingSessionGuards() {
+  for (const state of ["inactive", "missing", "error", "unknown"]) {
+    const { response, jar } = await submit("AGENT", "fixture-password");
+    assert.equal(
+      response.status,
+      303,
+      "The session starts with an approved profile",
+    );
+    const page = await probe("/agent", { jar });
+    assert.equal(
+      page.status,
+      200,
+      "The active fixture agent can open its page",
+    );
+    const pageHtml = await page.text();
+    await setFixtureProfile(state);
+    try {
+      for (const pathname of ["/", "/agent", "/dispatch", "/admin"]) {
+        const denied = await probe(pathname, { jar });
+        await expectPageRedirect(
+          denied,
+          "/login",
+          `Existing session with ${state} profile requesting ${pathname}`,
+        );
+      }
+      console.log(
+        `Existing session with ${state} profile: root and all role pages denied`,
+      );
+    } finally {
+      await setFixtureProfile("active");
+    }
+    await signOutFromPage("/agent", pageHtml, jar);
+  }
+
+  const { response, jar } = await submit("AGENT", "fixture-password");
+  assert.equal(response.status, 303, "Role-change probe starts as an agent");
+  const page = await probe("/agent", { jar });
+  assert.equal(page.status, 200, "Agent page before the role change");
+  const pageHtml = await page.text();
+  await setFixtureProfile("active", "supervisor");
+  try {
+    await expectPageRedirect(
+      await probe("/agent", { jar }),
+      "/dispatch",
+      "The current database role replaces the original login role",
+    );
+    await expectPageRedirect(
+      await probe("/", { jar }),
+      "/dispatch",
+      "Root reads the updated profile role",
+    );
+    const updatedPage = await probe("/dispatch", { jar });
+    assert.equal(
+      updatedPage.status,
+      200,
+      "The updated supervisor role can open dispatch",
+    );
+    const updatedText = visibleText(await updatedPage.text());
+    assert.match(
+      updatedText,
+      /superviseur/iu,
+      "The page shows the updated French role",
+    );
+    assert.match(
+      updatedText,
+      /supervisor/iu,
+      "The page shows the updated English role",
+    );
+    console.log(
+      "Existing session role change: old role page denied, root redirects, new role page allowed",
+    );
+  } finally {
+    await setFixtureProfile("active");
+  }
+  await signOutFromPage("/agent", pageHtml, jar);
 }
 
 function alertText(html) {
@@ -175,6 +354,17 @@ function expectMessage(result, french, english, label) {
 }
 
 try {
+  for (const pathname of ["/", "/agent", "/dispatch", "/admin"]) {
+    const denied = await probe(pathname);
+    assert.equal(denied.status, 307, `${pathname}: no session must be denied`);
+    assert.equal(
+      new URL(denied.headers.get("location"), origin).pathname,
+      "/login",
+      `${pathname}: unauthenticated destination`,
+    );
+  }
+  console.log("Unauthenticated root and all role pages: 307 → /login");
+
   const login = await probe("/login");
   assert.equal(login.status, 200, "Login page must render");
   assert.equal(
@@ -252,10 +442,10 @@ try {
     );
   }
 
-  for (const [badge, destination] of [
-    ["  agent  ", "/agent"],
-    ["SUPERVISOR", "/dispatch"],
-    ["ADMIN", "/admin"],
+  for (const [badge, destination, frenchRole, englishRole] of [
+    ["  agent  ", "/agent", /agent/iu, /agent/iu],
+    ["SUPERVISOR", "/dispatch", /superviseur/iu, /supervisor/iu],
+    ["ADMIN", "/admin", /administrateur/iu, /admin(?:istrator)?/iu],
   ]) {
     const { response, jar } = await submit(badge, "fixture-password");
     assert.equal(
@@ -277,17 +467,50 @@ try {
     const landing = await probe(destination, { jar });
     assert.equal(
       landing.status,
-      404,
-      "Role pages intentionally arrive in the next step",
+      200,
+      "The signed-in user can render their role page",
     );
     assert.equal(
       landing.headers.get("location"),
       null,
       "The proxy accepts the verified fixture session",
     );
-    console.log(
-      `Role redirect: 303 → ${destination}; authenticated GET: 404 (expected)`,
+    const pageHtml = await landing.text();
+    const pageText = visibleText(pageHtml);
+    assert.match(
+      pageText,
+      /Fixture\s+User/u,
+      "The page displays the authenticated profile name",
     );
+    assert.match(pageText, frenchRole, "The role has a French label");
+    assert.match(pageText, englishRole, "The role has an English label");
+    assert.match(pageText, /se déconnecter/iu, "French sign-out button");
+    assert.match(pageText, /sign out/iu, "English sign-out button");
+    console.log(
+      `Role redirect: 303 → ${destination}; own page: 200, name, role, bilingual sign-out`,
+    );
+
+    for (const otherPage of ["/agent", "/dispatch", "/admin"].filter(
+      (candidate) => candidate !== destination,
+    )) {
+      const redirected = await probe(otherPage, { jar });
+      const status = await expectPageRedirect(
+        redirected,
+        destination,
+        `${destination} user requesting ${otherPage}`,
+      );
+      console.log(
+        `Role boundary: GET ${otherPage}: ${status} → ${destination}`,
+      );
+    }
+    const root = await probe("/", { jar });
+    const rootStatus = await expectPageRedirect(
+      root,
+      destination,
+      "Authenticated root",
+    );
+    console.log(`Authenticated root: ${rootStatus} → ${destination}`);
+    await signOutFromPage(destination, pageHtml, jar);
   }
 
   for (const badge of ["PROFILE_ERROR", "UNKNOWN", "LOGOUT_ERROR"]) {
@@ -300,8 +523,10 @@ try {
     );
   }
 
+  await verifyExistingSessionGuards();
+
   console.log(
-    "Login HTTP checks passed; no hosted Auth accounts or database rows were changed.",
+    "Authentication and role-page HTTP checks passed; no hosted Auth accounts or database rows were changed.",
   );
 } catch (error) {
   // Assertions use static descriptions so cookies and form values never appear.
