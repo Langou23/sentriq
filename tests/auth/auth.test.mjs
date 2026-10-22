@@ -75,19 +75,55 @@ class RedirectSignal extends Error {
 }
 
 function actionHarness(options = {}) {
-  const calls = { clients: [], signIns: [], signOuts: [], revalidations: [] };
+  const calls = {
+    clients: [],
+    signIns: [],
+    signOuts: [],
+    profiles: [],
+    commits: 0,
+    clears: 0,
+    events: [],
+    revalidations: [],
+  };
   const client = {
     auth: {
       async signInWithPassword(credentials) {
         calls.signIns.push(credentials);
+        calls.events.push("signIn");
         if (options.signInThrows) throw options.signInThrows;
         return options.signInReply ?? { data: validAuthData, error: null };
       },
       async signOut(scope) {
         calls.signOuts.push(scope);
+        calls.events.push("signOut");
         if (options.signOutThrows) throw options.signOutThrows;
         return options.signOutReply ?? { error: null };
       },
+    },
+    from(table) {
+      calls.profiles.push({ table });
+      return {
+        select(columns) {
+          calls.profiles.at(-1).columns = columns;
+          return {
+            eq(column, value) {
+              calls.profiles.at(-1).filter = { column, value };
+              return {
+                async maybeSingle() {
+                  calls.events.push("profile");
+                  if (options.profileThrows) throw options.profileThrows;
+                  return (
+                    options.profileReply ?? {
+                      data: { role: "agent", is_active: true },
+                      error: null,
+                    }
+                  );
+                },
+              };
+            },
+          };
+        },
+      };
     },
   };
   const actions = loadTypeScript("apps/web/modules/auth/actions.ts", {
@@ -96,6 +132,23 @@ function actionHarness(options = {}) {
         calls.clients.push(clientOptions);
         if (options.clientThrows) throw options.clientThrows;
         return client;
+      },
+      async createSignInClient() {
+        calls.clients.push({ deferred: true });
+        if (options.clientThrows) throw options.clientThrows;
+        return {
+          supabase: client,
+          commitSessionCookies() {
+            calls.commits += 1;
+            calls.events.push("commit");
+            if (options.commitThrows) throw options.commitThrows;
+          },
+          clearSessionCookies() {
+            calls.clears += 1;
+            calls.events.push("clear");
+            if (options.clearThrows) throw options.clearThrows;
+          },
+        };
       },
     },
     "next/cache": {
@@ -120,7 +173,12 @@ function assertAuthError(result, code) {
   assert.ok(result.message.fr.length > 0);
   assert.ok(result.message.en.length > 0);
   assert.notEqual(result.message.fr, result.message.en);
-  assert.deepEqual(Object.keys(result).sort(), ["code", "message", "success"]);
+  assert.deepEqual(
+    Object.keys(result).sort(),
+    result.fieldErrors
+      ? ["code", "fieldErrors", "message", "success"]
+      : ["code", "message", "success"],
+  );
 }
 
 function proxyHarness(options = {}) {
@@ -171,7 +229,9 @@ function assertLoginRedirect(response, status = 307) {
   assert.match(response.headers.get("cache-control"), /no-store/);
 }
 
-const { badgeNumberToEmail } = loadTypeScript("apps/web/modules/auth/index.ts");
+const { badgeNumberToEmail, validateSignIn } = loadTypeScript(
+  "apps/web/modules/auth/index.ts",
+);
 
 for (const [badge, email] of [
   ["  abC-001  ", "ABC-001@sentriq.local"],
@@ -180,6 +240,58 @@ for (const [badge, email] of [
 ]) {
   test(`badge normalization preserves the identifier: ${JSON.stringify(badge)}`, () => {
     assert.equal(badgeNumberToEmail(badge), email);
+  });
+}
+
+function assertBilingual(message) {
+  assert.equal(typeof message.fr, "string");
+  assert.equal(typeof message.en, "string");
+  assert.ok(message.fr.length > 0);
+  assert.ok(message.en.length > 0);
+  assert.notEqual(message.fr, message.en);
+}
+
+test("Zod validation trims the badge without changing password contents", () => {
+  const result = validateSignIn({
+    badgeNumber: "  qc-001  ",
+    password: "  password  ",
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.data.badgeNumber.trim(), result.data.badgeNumber);
+  assert.equal(result.data.badgeNumber.toUpperCase(), "QC-001");
+  assert.equal(result.data.password, "  password  ");
+});
+
+test("Zod validation does not trim a nonempty whitespace password", () => {
+  const result = validateSignIn({ badgeNumber: "AG001", password: " " });
+  assert.equal(result.success, true);
+  assert.equal(result.data.password, " ");
+});
+
+for (const [field, values] of [
+  ["badgeNumber", ["", " \t ", "AG 001", "someone@example.com", null, 42]],
+  ["password", ["", null, 42]],
+]) {
+  for (const value of values) {
+    test(`Zod validation returns bilingual ${field} errors for ${JSON.stringify(value)}`, () => {
+      const result = validateSignIn({
+        badgeNumber: "AG001",
+        password: "password",
+        [field]: value,
+      });
+      assert.equal(result.success, false);
+      assertBilingual(result.fieldErrors[field]);
+      assert.equal(Object.hasOwn(result, "data"), false);
+    });
+  }
+}
+
+for (const input of [null, undefined, "invalid", [], {}, { password: "" }]) {
+  test(`Zod validation safely rejects malformed input ${JSON.stringify(input)}`, () => {
+    const result = validateSignIn(input);
+    assert.equal(result.success, false);
+    assertBilingual(result.fieldErrors.badgeNumber);
+    assertBilingual(result.fieldErrors.password);
   });
 }
 
@@ -209,15 +321,162 @@ test("signIn normalizes the badge, preserves password whitespace and redirects",
     harness.signIn("  qc-001  ", "  password  "),
     (error) => {
       assert.ok(error instanceof RedirectSignal);
-      assert.equal(error.location, "/");
+      assert.equal(error.location, "/agent");
       return true;
     },
   );
-  assert.deepEqual(harness.calls.clients, [{ requireCookieWrites: true }]);
+  assert.deepEqual(harness.calls.clients, [{ deferred: true }]);
   assert.deepEqual(harness.calls.signIns, [
     { email: "QC-001@sentriq.local", password: "  password  " },
   ]);
   assert.deepEqual(harness.calls.revalidations, [["/", "layout"]]);
+  assert.deepEqual(harness.calls.profiles, [
+    {
+      table: "profiles",
+      columns: "role,is_active",
+      filter: { column: "id", value: validAuthData.user.id },
+    },
+  ]);
+  assert.deepEqual(harness.calls.events, ["signIn", "profile", "commit"]);
+  assert.equal(harness.calls.commits, 1);
+  assert.equal(harness.calls.clears, 0);
+});
+
+for (const [role, target] of [
+  ["agent", "/agent"],
+  ["supervisor", "/dispatch"],
+  ["admin", "/admin"],
+]) {
+  test(`signIn publishes the session only after validating an active ${role} profile`, async () => {
+    const harness = actionHarness({
+      profileReply: { data: { role, is_active: true }, error: null },
+    });
+    await assert.rejects(harness.signIn("AG001", "password"), (error) => {
+      assert.ok(error instanceof RedirectSignal);
+      assert.equal(error.location, target);
+      return true;
+    });
+    assert.deepEqual(harness.calls.events, ["signIn", "profile", "commit"]);
+    assert.equal(harness.calls.commits, 1);
+    assert.equal(harness.calls.clears, 0);
+    assert.deepEqual(harness.calls.signOuts, []);
+    assert.deepEqual(harness.calls.revalidations, [["/", "layout"]]);
+  });
+}
+
+for (const [label, profile] of [
+  ["missing", null],
+  ["inactive agent", { role: "agent", is_active: false }],
+  ["inactive supervisor", { role: "supervisor", is_active: false }],
+  ["inactive admin", { role: "admin", is_active: false }],
+]) {
+  test(`signIn immediately signs out a ${label} profile without publishing session cookies`, async () => {
+    const harness = actionHarness({
+      profileReply: { data: profile, error: null },
+    });
+    const result = await harness.signIn("AG001", "password");
+    assertAuthError(result, "account_disabled");
+    assert.deepEqual(result.message, {
+      fr: "Compte désactivé, contactez votre superviseur.",
+      en: "Account disabled. Contact your supervisor.",
+    });
+    assert.deepEqual(harness.calls.signOuts, [{ scope: "local" }]);
+    assert.deepEqual(harness.calls.events, [
+      "signIn",
+      "profile",
+      "signOut",
+      "clear",
+    ]);
+    assert.equal(harness.calls.commits, 0);
+    assert.equal(harness.calls.clears, 1);
+    assert.deepEqual(harness.calls.revalidations, []);
+  });
+}
+
+for (const [label, profileReply] of [
+  [
+    "database error",
+    { data: null, error: { message: "private SQL diagnostic" } },
+  ],
+  ["unknown role", { data: { role: "owner", is_active: true }, error: null }],
+  ["missing role", { data: { is_active: true }, error: null }],
+  ["missing active flag", { data: { role: "agent" }, error: null }],
+  [
+    "nonboolean active flag",
+    { data: { role: "admin", is_active: "true" }, error: null },
+  ],
+]) {
+  test(`signIn fails closed and clears the session for ${label}`, async () => {
+    const harness = actionHarness({ profileReply });
+    const result = await harness.signIn("AG001", "password");
+    assertAuthError(result, "service_unavailable");
+    assert.doesNotMatch(JSON.stringify(result), /SQL|owner|AG001|password/);
+    assert.deepEqual(harness.calls.signOuts, [{ scope: "local" }]);
+    assert.equal(harness.calls.commits, 0);
+    assert.equal(harness.calls.clears, 1);
+    assert.deepEqual(harness.calls.revalidations, []);
+  });
+}
+
+test("signIn clears staged cookies when the profile lookup throws", async () => {
+  const harness = actionHarness({
+    profileThrows: new Error("private diagnostic"),
+  });
+  const result = await harness.signIn("AG001", "password");
+  assertAuthError(result, "service_unavailable");
+  assert.doesNotMatch(JSON.stringify(result), /private diagnostic/);
+  assert.deepEqual(harness.calls.signOuts, [{ scope: "local" }]);
+  assert.equal(harness.calls.commits, 0);
+  assert.equal(harness.calls.clears, 1);
+  assert.deepEqual(harness.calls.revalidations, []);
+});
+
+for (const failure of [
+  { signOutReply: { error: { message: "private logout diagnostic" } } },
+  { signOutThrows: new Error("private logout diagnostic") },
+]) {
+  test(`rejected profile cookie cleanup survives ${Object.keys(failure)[0]}`, async () => {
+    const harness = actionHarness({
+      ...failure,
+      profileReply: { data: { role: "agent", is_active: false }, error: null },
+    });
+    const result = await harness.signIn("AG001", "password");
+    assertAuthError(result, "account_disabled");
+    assert.equal(harness.calls.commits, 0);
+    assert.equal(harness.calls.clears, 1);
+    assert.deepEqual(harness.calls.revalidations, []);
+    assert.doesNotMatch(JSON.stringify(result), /private logout diagnostic/);
+  });
+}
+
+test("rejected profile reports service failure if browser cookies cannot be cleared", async () => {
+  const harness = actionHarness({
+    profileReply: { data: null, error: null },
+    clearThrows: new Error("private cookie persistence diagnostic"),
+  });
+  const result = await harness.signIn("AG001", "password");
+  assertAuthError(result, "service_unavailable");
+  assert.equal(harness.calls.commits, 0);
+  assert.equal(harness.calls.clears, 1);
+  assert.deepEqual(harness.calls.signOuts, [{ scope: "local" }]);
+  assert.deepEqual(harness.calls.revalidations, []);
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /private cookie persistence diagnostic/,
+  );
+});
+
+test("signIn does not redirect when committing session cookies fails", async () => {
+  const harness = actionHarness({
+    commitThrows: new Error("Cookie store failure"),
+  });
+  const result = await harness.signIn("AG001", "password");
+  assertAuthError(result, "service_unavailable");
+  assert.equal(harness.calls.commits, 1);
+  assert.equal(harness.calls.clears, 1);
+  assert.deepEqual(harness.calls.signOuts, [{ scope: "local" }]);
+  assert.deepEqual(harness.calls.revalidations, []);
+  assert.doesNotMatch(JSON.stringify(result), /Cookie store failure/);
 });
 
 for (const status of [400, 401, 422, 429, 500, undefined]) {
@@ -240,6 +499,14 @@ for (const status of [400, 401, 422, 429, 500, undefined]) {
       /upstream|test-secret-password-value|AG001/,
     );
     assert.deepEqual(harness.calls.revalidations, []);
+    assert.equal(harness.calls.commits, 0);
+    assert.deepEqual(harness.calls.profiles, []);
+    if (status && status < 429) {
+      assert.deepEqual(result.message, {
+        fr: "Matricule ou mot de passe invalide.",
+        en: "Invalid badge number or password.",
+      });
+    }
   });
 }
 
@@ -266,6 +533,88 @@ for (const failure of ["clientThrows", "signInThrows"]) {
     assertAuthError(result, "service_unavailable");
     assert.doesNotMatch(JSON.stringify(result), /private diagnostic/);
     assert.deepEqual(harness.calls.revalidations, []);
+  });
+}
+
+test("signInFromForm validates both empty fields without leaking submitted values", async () => {
+  const harness = actionHarness();
+  const formData = new FormData();
+  formData.set("badgeNumber", " \t ");
+  formData.set("password", "");
+  const result = await harness.signInFromForm(null, formData);
+  assertAuthError(result, "invalid_input");
+  assertBilingual(result.fieldErrors.badgeNumber);
+  assertBilingual(result.fieldErrors.password);
+  assert.deepEqual(harness.calls.clients, []);
+  assert.equal(Object.hasOwn(result, "password"), false);
+  assert.equal(Object.hasOwn(result, "badgeNumber"), false);
+});
+
+test("signInFromForm forwards the original password and redirects according to profile role", async () => {
+  const harness = actionHarness({
+    profileReply: {
+      data: { role: "supervisor", is_active: true },
+      error: null,
+    },
+  });
+  const formData = new FormData();
+  formData.set("badgeNumber", "  qc-001  ");
+  formData.set("password", "  preserve password  ");
+  await assert.rejects(harness.signInFromForm(null, formData), (error) => {
+    assert.ok(error instanceof RedirectSignal);
+    assert.equal(error.location, "/dispatch");
+    return true;
+  });
+  assert.deepEqual(harness.calls.signIns, [
+    { email: "QC-001@sentriq.local", password: "  preserve password  " },
+  ]);
+  assert.equal(harness.calls.commits, 1);
+});
+
+test("signInFromForm returns generic authentication failures without password or badge contents", async () => {
+  const harness = actionHarness({
+    signInReply: {
+      data: { user: null, session: null },
+      error: { status: 400, message: "User not found" },
+    },
+  });
+  const formData = new FormData();
+  formData.set("badgeNumber", "QC-001");
+  formData.set("password", "private-password-value");
+  const result = await harness.signInFromForm(null, formData);
+  assertAuthError(result, "invalid_credentials");
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /User not found|QC-001|private-password-value/,
+  );
+  assert.equal(Object.hasOwn(result, "fieldErrors"), false);
+  assert.equal(harness.calls.commits, 0);
+});
+
+for (const formData of [null, undefined, {}, "not form data", new Map()]) {
+  test(`signInFromForm safely handles malformed FormData ${Object.prototype.toString.call(formData)}`, async () => {
+    const harness = actionHarness();
+    const result = await harness.signInFromForm(null, formData);
+    assertAuthError(result, "invalid_input");
+    assert.deepEqual(harness.calls.clients, []);
+  });
+}
+
+for (const field of ["badgeNumber", "password"]) {
+  test(`signInFromForm rejects a file supplied as ${field}`, async () => {
+    const harness = actionHarness();
+    const formData = new FormData();
+    formData.set("badgeNumber", "AG001");
+    formData.set("password", "password");
+    formData.set(field, new Blob(["private upload content"]), "unexpected.txt");
+    const result = await harness.signInFromForm(null, formData);
+    assertAuthError(result, "invalid_input");
+    assertBilingual(result.fieldErrors[field]);
+    assert.deepEqual(harness.calls.clients, []);
+    assert.doesNotMatch(
+      JSON.stringify(result),
+      /private upload content|unexpected.txt/,
+    );
   });
 }
 
@@ -572,35 +921,45 @@ for (const pathname of [
   });
 }
 
-function serverClientHarness({ writesFail = false } = {}) {
+function serverClientHarness({
+  writesFail = false,
+  existingCookies = [{ name: "existing", value: "cookie" }],
+} = {}) {
   const writes = [];
   let adapter;
-  const { createClient } = loadTypeScript("apps/web/lib/supabase/server.ts", {
-    "./config": {
-      getSupabaseConfig() {
-        return { url: "https://supabase.example", anonKey: "test-public-key" };
+  const { createClient, createSignInClient } = loadTypeScript(
+    "apps/web/lib/supabase/server.ts",
+    {
+      "./config": {
+        getSupabaseConfig() {
+          return {
+            url: "https://supabase.example",
+            anonKey: "test-public-key",
+          };
+        },
+      },
+      "next/headers": {
+        async cookies() {
+          return {
+            getAll: () => existingCookies,
+            set(name, value, options) {
+              if (writesFail) throw new Error("Cookies cannot be modified");
+              writes.push({ name, value, options });
+            },
+          };
+        },
+      },
+      "@supabase/ssr": {
+        createServerClient(_url, _key, options) {
+          adapter = options.cookies;
+          return { marker: "test-client" };
+        },
       },
     },
-    "next/headers": {
-      async cookies() {
-        return {
-          getAll: () => [{ name: "existing", value: "cookie" }],
-          set(name, value, options) {
-            if (writesFail) throw new Error("Cookies cannot be modified");
-            writes.push({ name, value, options });
-          },
-        };
-      },
-    },
-    "@supabase/ssr": {
-      createServerClient(_url, _key, options) {
-        adapter = options.cookies;
-        return { marker: "test-client" };
-      },
-    },
-  });
+  );
   return {
     createClient,
+    createSignInClient,
     writes,
     get adapter() {
       return adapter;
@@ -638,4 +997,145 @@ test("the default server factory tolerates a read-only Server Component cookie s
   assert.doesNotThrow(() =>
     harness.adapter.setAll([{ name: "session", value: "new", options: {} }]),
   );
+});
+
+test("the sign-in factory defers browser session cookies until profile approval", async () => {
+  const harness = serverClientHarness();
+  const context = await harness.createSignInClient();
+  assert.equal(context.supabase.marker, "test-client");
+  harness.adapter.setAll([
+    {
+      name: "sb-supabase-auth-token",
+      value: "new-session",
+      options: { path: "/", sameSite: "lax", secure: true },
+    },
+  ]);
+  assert.deepEqual(harness.writes, []);
+  assert.ok(
+    harness.adapter
+      .getAll()
+      .some(
+        (cookie) =>
+          cookie.name === "sb-supabase-auth-token" &&
+          cookie.value === "new-session",
+      ),
+  );
+  await context.commitSessionCookies();
+  assert.deepEqual(harness.writes, [
+    {
+      name: "sb-supabase-auth-token",
+      value: "new-session",
+      options: { path: "/", sameSite: "lax", secure: true },
+    },
+  ]);
+});
+
+test("the sign-in factory commits only the latest staged cookie value", async () => {
+  const harness = serverClientHarness();
+  const context = await harness.createSignInClient();
+  harness.adapter.setAll([
+    {
+      name: "sb-supabase-auth-token",
+      value: "old-stage",
+      options: { path: "/" },
+    },
+  ]);
+  harness.adapter.setAll([
+    {
+      name: "sb-supabase-auth-token",
+      value: "final-stage",
+      options: { path: "/", httpOnly: true },
+    },
+  ]);
+  assert.deepEqual(harness.writes, []);
+  await context.commitSessionCookies();
+  assert.deepEqual(harness.writes, [
+    {
+      name: "sb-supabase-auth-token",
+      value: "final-stage",
+      options: { path: "/", httpOnly: true },
+    },
+  ]);
+});
+
+test("the sign-in factory removes rejected session chunks without clearing unrelated cookies", async () => {
+  const harness = serverClientHarness({
+    existingCookies: [
+      { name: "sb-supabase-auth-token.0", value: "existing-first" },
+      { name: "sb-supabase-auth-token.1", value: "existing-second" },
+      { name: "sb-other-auth-token", value: "other-project" },
+      { name: "language", value: "fr" },
+    ],
+  });
+  const context = await harness.createSignInClient();
+  harness.adapter.setAll([
+    {
+      name: "sb-supabase-auth-token.0",
+      value: "rejected-first",
+      options: { path: "/" },
+    },
+    {
+      name: "sb-supabase-auth-token.2",
+      value: "rejected-third",
+      options: { path: "/" },
+    },
+  ]);
+  assert.deepEqual(harness.writes, []);
+  await context.clearSessionCookies();
+  const clearedNames = new Set(harness.writes.map((cookie) => cookie.name));
+  for (const name of [
+    "sb-supabase-auth-token.0",
+    "sb-supabase-auth-token.1",
+    "sb-supabase-auth-token.2",
+  ]) {
+    assert.equal(clearedNames.has(name), true);
+  }
+  assert.equal(clearedNames.has("sb-other-auth-token"), false);
+  assert.equal(clearedNames.has("language"), false);
+  assert.ok(
+    harness.writes.every(
+      (cookie) => cookie.value === "" && cookie.options.maxAge === 0,
+    ),
+  );
+  await context.commitSessionCookies();
+  assert.ok(harness.writes.every((cookie) => cookie.value === ""));
+});
+
+test("the sign-in factory propagates cookie commit failures", async () => {
+  const harness = serverClientHarness({ writesFail: true });
+  const context = await harness.createSignInClient();
+  harness.adapter.setAll([
+    {
+      name: "sb-supabase-auth-token",
+      value: "session",
+      options: { path: "/" },
+    },
+  ]);
+  await assert.rejects(
+    async () => context.commitSessionCookies(),
+    /Cookies cannot be modified/,
+  );
+});
+
+test("failed browser-cookie cleanup still discards staged tokens permanently", async () => {
+  const harness = serverClientHarness({ writesFail: true });
+  const context = await harness.createSignInClient();
+  harness.adapter.setAll([
+    {
+      name: "sb-supabase-auth-token",
+      value: "rejected-session",
+      options: { path: "/" },
+    },
+  ]);
+  await assert.rejects(
+    async () => context.clearSessionCookies(),
+    /Cookies cannot be modified/,
+  );
+  assert.ok(
+    harness.adapter
+      .getAll()
+      .every((cookie) => cookie.value !== "rejected-session"),
+  );
+  await assert.doesNotReject(async () => context.commitSessionCookies());
+  assert.deepEqual(harness.writes, []);
 });

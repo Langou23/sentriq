@@ -37,8 +37,10 @@ Exécuter toutes les commandes depuis la racine du monorepo :
 | `npm run typecheck` | Vérifier les types et les routes Next.js. |
 
 L'application est accessible par défaut sur [localhost:3000](http://localhost:3000).
-Sans session, les routes protégées redirigent vers `/login`, dont la page sera
-créée à une prochaine étape. La plomberie est décrite dans le
+Sans session, les routes protégées redirigent vers le formulaire bilingue `/login`.
+Un compte Auth et un profil actif doivent déjà exister : la connexion redirige
+vers `/agent`, `/dispatch` ou `/admin` selon le rôle. Ces pages seront créées
+à l'étape 4 et retournent pour l'instant une 404. Le fonctionnement est décrit dans le
 [module auth](apps/web/modules/auth/README.md).
 Sous PowerShell, utiliser `npm.cmd` si l'exécution de `npm.ps1` est bloquée.
 Arrêter le serveur de développement avant de lancer un build de production.
@@ -90,7 +92,7 @@ Fondations et fonctionnalités prévues pour la v1 :
 ### Statut
 
 - **Bloc 01 (Fondations) : terminé.**
-- **Bloc 02 (Auth) : en cours — modèle de données et plomberie de session ; interface à venir.**
+- **Bloc 02 (Auth) : en cours — modèle de données, session et connexion bilingue ; pages par rôle à venir.**
 
 ## English
 
@@ -127,8 +129,10 @@ Run all commands from the monorepo root:
 | `npm run typecheck` | Check types and generated Next.js routes. |
 
 The application is available at [localhost:3000](http://localhost:3000) by default.
-Without a session, protected routes redirect to `/login`, whose page will be
-created in a later step. Session plumbing is documented in the
+Without a session, protected routes redirect to the bilingual `/login` form.
+An Auth account and an active profile must already exist: sign-in redirects to
+`/agent`, `/dispatch`, or `/admin` based on the role. These pages will be created
+in step 4 and currently return 404. The flow is documented in the
 [auth module](apps/web/modules/auth/README.md).
 In PowerShell, use `npm.cmd` if running `npm.ps1` is blocked.
 Stop the development server before running a production build.
@@ -180,4 +184,4 @@ Foundations and features planned for v1:
 ### Status
 
 - **Block 01 (Foundations): complete.**
-- **Block 02 (Auth): in progress — data model and session plumbing; interface upcoming.**
+- **Block 02 (Auth): in progress — data model, sessions, and bilingual sign-in; role pages upcoming.**

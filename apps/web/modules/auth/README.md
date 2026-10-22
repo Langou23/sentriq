@@ -4,11 +4,12 @@
 
 ### Interface publique
 
-| Point d'entrée           | Usage                                                          |
-| ------------------------ | -------------------------------------------------------------- |
-| `@/modules/auth`         | `badgeNumberToEmail` et types d'erreurs sérialisables.         |
-| `@/modules/auth/actions` | Server Actions `signIn(badgeNumber, password)` et `signOut()`. |
-| `@/modules/auth/proxy`   | Adaptateur de session `updateSession` pour le proxy Next.js.   |
+| Point d'entrée              | Usage                                                          |
+| --------------------------- | -------------------------------------------------------------- |
+| `@/modules/auth`            | `badgeNumberToEmail`, `validateSignIn` et types sérialisables. |
+| `@/modules/auth/actions`    | Server Actions `signIn`, `signInFromForm` et `signOut`.        |
+| `@/modules/auth/login-form` | Composant public `LoginForm`, utilisé par `/login`.            |
+| `@/modules/auth/proxy`      | Adaptateur de session `updateSession` pour le proxy Next.js.   |
 
 `badgeNumberToEmail("  ab-001  ")` retourne `AB-001@sentriq.local`.
 La normalisation conserve les zéros initiaux et ne modifie jamais le mot de passe.
@@ -17,9 +18,23 @@ ne créent ni compte ni profil.
 
 Les actions renvoient une erreur générique `{ success: false, code, message }`
 avec `message.fr` et `message.en` en cas d'échec. Elles ne renvoient aucun jeton
-ni erreur brute Supabase. Après succès, `signIn` redirige vers `/` et `signOut`
-vers `/login`, en invalidant le cache des layouts. La déconnexion est limitée à
-la session courante (`scope: "local"`). Les actions exigent l'écriture effective
+ni erreur brute Supabase. Zod valide les champs non vides côté serveur et fournit
+des erreurs de champ FR/EN sans renvoyer le mot de passe. Le formulaire reprend
+l'affichage simultané FR puis EN de l'accueil, avec `lang="en"` sur les traductions.
+Les identifiants refusés produisent toujours « Matricule ou mot de passe invalide. ».
+
+Après authentification, `signIn` lit `role,is_active` dans `public.profiles` pour
+l'identifiant Auth vérifié, via le client utilisateur et les politiques RLS.
+Un profil absent ou inactif entraîne une déconnexion immédiate et le message
+« Compte désactivé, contactez votre superviseur. ». Une erreur de lecture ou un
+rôle inconnu bloque également la connexion avec une erreur d'indisponibilité.
+Les nouveaux cookies de session restent différés jusqu'à validation du profil ;
+ils sont supprimés en cas de refus, même si la révocation distante échoue.
+
+Un profil actif redirige vers `/agent` (agent), `/dispatch` (supervisor) ou `/admin`
+(admin). Ces destinations retournent une 404 jusqu'à l'étape 4. `signOut` redirige
+vers `/login`. Les actions invalident le cache des layouts et la déconnexion est
+limitée à la session courante (`scope: "local"`). Elles exigent l'écriture effective
 des cookies ; un échec ne peut pas être présenté comme une connexion réussie.
 
 ### Session et routes
@@ -43,20 +58,22 @@ et `/manifest.webmanifest`. Les API et les autres chemins ayant une extension
 restent protégés. Ajouter les futurs assets publics à ce périmètre plutôt que
 d'exclure tous les chemins contenant une extension.
 
-Aucune page de connexion n'est créée à cette étape : `/login` retourne donc
-encore une page 404, sans boucle de redirection. Le proxy vérifie la session
-Auth ; les autorisations par rôle et `is_active` restent à traiter dans les
-flux applicatifs, avec RLS au niveau des données.
+`/login` retourne le formulaire avec HTTP 200. Le proxy vérifie la session Auth ;
+le contrôle de profil décrit ci-dessus intervient lors de la connexion. Les futures
+pages et opérations métier devront aussi vérifier leurs autorisations côté serveur,
+avec RLS au niveau des données : une redirection de connexion n'est pas une règle
+d'autorisation pour les opérations ultérieures.
 
 ## English
 
 ### Public interface
 
-| Entry point              | Purpose                                                         |
-| ------------------------ | --------------------------------------------------------------- |
-| `@/modules/auth`         | `badgeNumberToEmail` and serializable error types.              |
-| `@/modules/auth/actions` | `signIn(badgeNumber, password)` and `signOut()` Server Actions. |
-| `@/modules/auth/proxy`   | `updateSession` session adapter for the Next.js proxy.          |
+| Entry point                 | Purpose                                                         |
+| --------------------------- | --------------------------------------------------------------- |
+| `@/modules/auth`            | `badgeNumberToEmail`, `validateSignIn`, and serializable types. |
+| `@/modules/auth/actions`    | `signIn`, `signInFromForm`, and `signOut` Server Actions.       |
+| `@/modules/auth/login-form` | Public `LoginForm` component, used by `/login`.                 |
+| `@/modules/auth/proxy`      | `updateSession` session adapter for the Next.js proxy.          |
 
 `badgeNumberToEmail("  ab-001  ")` returns `AB-001@sentriq.local`.
 Normalization preserves leading zeros and never changes the password.
@@ -65,10 +82,23 @@ actions create neither accounts nor profiles.
 
 On failure, actions return a generic `{ success: false, code, message }` error
 with `message.fr` and `message.en`. They return no tokens or raw Supabase errors.
-After success, `signIn` redirects to `/` and `signOut` to `/login`, invalidating
-the layout cache. Sign-out ends only the current session (`scope: "local"`).
-Actions require cookie writes to succeed; failed persistence cannot be reported
-as a successful sign-in.
+Zod validates nonempty fields on the server and returns bilingual field errors,
+never the password. The form follows the home page's simultaneous French then
+English presentation, marking translations with `lang="en"`. Rejected credentials
+always produce “Invalid badge number or password.”.
+
+After authentication, `signIn` reads `role,is_active` from `public.profiles` for the
+verified Auth user ID, using the user's client and RLS policies. A missing or
+inactive profile immediately signs out with “Account disabled. Contact your
+supervisor.”. Profile query failures and unknown roles also block sign-in with
+an unavailable-service message. New session cookies are deferred until the profile
+is approved; rejection clears them even if remote revocation fails.
+
+An active profile redirects to `/agent` (agent), `/dispatch` (supervisor), or `/admin`
+(admin). These destinations return 404 until step 4. `signOut` redirects to `/login`.
+Actions invalidate the layout cache. Sign-out ends only the current session
+(`scope: "local"`). Actions require cookie writes to succeed; failed persistence
+cannot be reported as a successful sign-in.
 
 ### Session and routes
 
@@ -90,10 +120,10 @@ Only `/login` and `/health` are public routes. Asset exceptions are explicit:
 protected. Add future public assets to this scope rather than excluding all
 paths with an extension.
 
-No login page is created at this stage, so `/login` still returns a 404 page,
-without a redirect loop. The proxy verifies the Auth session; role and
-`is_active` authorization remain to be handled in application flows, with RLS
-protecting data access.
+`/login` returns the form with HTTP 200. The proxy verifies the Auth session;
+the profile check described above runs at sign-in. Future role pages and business
+operations must also enforce authorization on the server, with RLS protecting data
+access: a sign-in redirect is not an authorization rule for later operations.
 
 ## References
 

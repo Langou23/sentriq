@@ -44,9 +44,14 @@ try {
   await expectLoginRedirect("/__auth_smoke_private__", { method: "POST" });
 
   const login = await probe("/login");
-  assert.ok([200, 404].includes(login.status), "/login must remain public");
+  assert.equal(login.status, 200, "/login must render the public form");
   assert.equal(login.headers.get("location"), null);
   const loginHtml = await login.text();
+  assert.ok(loginHtml.includes('name="badgeNumber"'));
+  assert.ok(loginHtml.includes('name="password"'));
+  assert.ok(
+    loginHtml.includes("Matricule") && loginHtml.includes("Badge number"),
+  );
   console.log(`GET /login: ${login.status}, no redirect loop`);
 
   const health = await probe("/health");
