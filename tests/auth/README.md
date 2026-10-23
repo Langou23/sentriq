@@ -1,10 +1,34 @@
 # Authentication tests
 
-Run from the repository root with Node.js 22 after `npm ci`:
+Run from the repository root with Node.js 22.12 or later after `npm ci`.
+
+## All isolated tests
 
 ```sh
-node --test tests/auth/auth.test.mjs
-node --test tests/auth/role-pages.test.mjs
+npm test
+```
+
+This runs the Vitest unit tests followed by the existing Node.js authentication
+regression suites. The CI unit test job runs the same command. No server,
+environment values, credentials, or Supabase access are required.
+
+## Vitest unit tests
+
+```sh
+npm run test:unit
+```
+
+The Vitest suites live in `apps/web/modules/auth/__tests__/`. They import the
+module's public `badgeNumberToEmail` and `validateSignIn` functions and exercise
+the actual Zod schema: digit-only badge normalization, leading zeros, required
+fields, bilingual validation messages, and unchanged passwords. They run once
+without watch mode. ESLint and the application's strict TypeScript check also
+cover these test files.
+
+## Isolated authentication regression tests
+
+```sh
+npm run test:auth
 ```
 
 The suites use the built-in Node.js test runner and the TypeScript compiler already

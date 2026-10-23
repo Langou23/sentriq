@@ -17,6 +17,7 @@ next-env.d.ts
 *.pfx
 
 # Test output
+.vitest/
 coverage/
 playwright-report/
 test-results/

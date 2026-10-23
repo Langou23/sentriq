@@ -20,7 +20,7 @@ sécurité privée du Québec. Elle vise à centraliser le suivi des agents, les
 
 ### Prérequis
 
-- **Node.js 22.x**.
+- **Node.js 22.x, à partir de 22.12** (requis par Vitest).
 - **npm 10 ou supérieur** ; le dépôt déclare npm 10.9.8.
 - Un projet Supabase hébergé pour utiliser la connexion Supabase en local.
 
@@ -28,13 +28,18 @@ sécurité privée du Québec. Elle vise à centraliser le suivi des agents, les
 
 Exécuter toutes les commandes depuis la racine du monorepo :
 
-| Commande            | Usage                                     |
-| ------------------- | ----------------------------------------- |
-| `npm ci`            | Installer les dépendances du lockfile.    |
-| `npm run dev`       | Démarrer le serveur de développement.     |
-| `npm run build`     | Créer le build de production.             |
-| `npm run lint`      | Vérifier les règles ESLint.               |
-| `npm run typecheck` | Vérifier les types et les routes Next.js. |
+| Commande            | Usage                                                        |
+| ------------------- | ------------------------------------------------------------ |
+| `npm ci`            | Installer les dépendances du lockfile.                       |
+| `npm run dev`       | Démarrer le serveur de développement.                        |
+| `npm run build`     | Créer le build de production.                                |
+| `npm run lint`      | Vérifier les règles ESLint.                                  |
+| `npm run typecheck` | Vérifier les types et les routes Next.js.                    |
+| `npm test`          | Lancer Vitest et les régressions isolées d'authentification. |
+
+Les tests unitaires sont placés près des modules dans `apps/web/` et ne nécessitent
+ni serveur ni identifiants Supabase. Les vérifications d'authentification
+complémentaires sont décrites dans [tests/auth/README.md](tests/auth/README.md).
 
 L'application est accessible par défaut sur [localhost:3000](http://localhost:3000).
 Sans session, les routes protégées redirigent vers le formulaire bilingue `/login`.
@@ -70,7 +75,8 @@ ne sont pas nécessaires pour cette configuration hébergée.
 | `docs/`     | Réservé à la documentation, avec `architecture/` et `decisions/`.     |
 
 Les conventions permanentes sont définies dans [AGENTS.md](AGENTS.md).
-La CI vérifie lint, typecheck et build sur chaque push et pull request vers `main`.
+La CI vérifie les tests unitaires, lint, typecheck et build sur chaque push et pull
+request vers `main`.
 
 ### Roadmap v1
 
@@ -116,7 +122,7 @@ day-to-day operational coordination.
 
 ### Prerequisites
 
-- **Node.js 22.x**.
+- **Node.js 22.x, version 22.12 or later** (required by Vitest).
 - **npm 10 or later**; the repository declares npm 10.9.8.
 - A hosted Supabase project to use the Supabase connection locally.
 
@@ -124,13 +130,18 @@ day-to-day operational coordination.
 
 Run all commands from the monorepo root:
 
-| Command             | Purpose                                   |
-| ------------------- | ----------------------------------------- |
-| `npm ci`            | Install dependencies from the lockfile.   |
-| `npm run dev`       | Start the development server.             |
-| `npm run build`     | Create the production build.              |
-| `npm run lint`      | Check ESLint rules.                       |
-| `npm run typecheck` | Check types and generated Next.js routes. |
+| Command             | Purpose                                             |
+| ------------------- | --------------------------------------------------- |
+| `npm ci`            | Install dependencies from the lockfile.             |
+| `npm run dev`       | Start the development server.                       |
+| `npm run build`     | Create the production build.                        |
+| `npm run lint`      | Check ESLint rules.                                 |
+| `npm run typecheck` | Check types and generated Next.js routes.           |
+| `npm test`          | Run Vitest and isolated authentication regressions. |
+
+Unit tests are colocated with modules in `apps/web/` and need no server or
+Supabase credentials. Additional authentication checks are documented in
+[tests/auth/README.md](tests/auth/README.md).
 
 The application is available at [localhost:3000](http://localhost:3000) by default.
 Without a session, protected routes redirect to the bilingual `/login` form.
@@ -166,7 +177,8 @@ are not required for this hosted setup.
 | `docs/`     | Reserved for documentation, with `architecture/` and `decisions/`.  |
 
 Permanent conventions are defined in [AGENTS.md](AGENTS.md).
-CI checks lint, typecheck, and build on every push and pull request targeting `main`.
+CI checks unit tests, lint, typecheck, and build on every push and pull request
+targeting `main`.
 
 ### Roadmap v1
 
