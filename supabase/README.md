@@ -52,6 +52,57 @@ des sessions Auth lorsque `is_active` change.
 Les vérifications des accès autorisés et refusés sont dans
 [`tests/profiles_rls.sql`](tests/profiles_rls.sql).
 
+### Pointage : sites, affectations et sessions
+
+La nouvelle migration est
+[`migrations/20261023153000_create_timekeeping.sql`](migrations/20261023153000_create_timekeeping.sql).
+Elle dépend des deux migrations précédentes : profils, puis matricules numériques.
+Si elles sont déjà appliquées au projet, ne pas les réexécuter.
+
+Pour appliquer uniquement cette nouvelle migration au projet hébergé :
+
+1. Ouvrir **SQL Editor → New query** dans le dashboard Supabase.
+2. Sélectionner le rôle d'administration `postgres`.
+3. Copier tout le fichier `20261023153000_create_timekeeping.sql`, de `begin;`
+   à `commit;`, et l'exécuter une seule fois.
+4. Vérifier les trois tables, leurs contraintes, leurs triggers et leurs politiques RLS.
+
+Ces instructions décrivent une application manuelle ; elles ne confirment pas que
+la migration a été exécutée sur le projet hébergé. L'historique de la CLI devra
+être synchronisé avant un éventuel futur `db push`, comme pour les profils.
+
+Le modèle comprend :
+
+- `sites` : nom, adresse facultative, coordonnées, rayon en mètres et statut actif.
+- `assignments` : lien entre un profil et un site, avec statut actif ; aucune
+  planification d'horaires n'est introduite à cette étape.
+- `work_sessions` : entrée et sortie, avec coordonnées, distance et indicateur
+  de présence dans le rayon. Un index unique interdit plusieurs sessions ouvertes
+  pour un même agent, même sur des sites différents.
+
+Les sites actifs sont visibles aux utilisateurs connectés. Seul un administrateur
+au profil actif peut aussi consulter les sites inactifs et créer ou modifier
+des sites et des affectations depuis un client applicatif.
+
+L'accès aux affectations et aux sessions exige un profil actif : un agent ne lit
+que les siennes ; un superviseur ou administrateur peut toutes les lire.
+Un agent actif ne peut ouvrir qu'une session à son nom, sur un site actif auquel
+il possède une affectation active. Il peut uniquement clôturer sa propre session
+ouverte, sans modifier les données d'entrée. La clôture reste autorisée si le site
+ou l'affectation a été désactivé entre-temps, tant que son profil reste actif.
+Les superviseurs et administrateurs n'ont pas d'écriture client sur les sessions.
+
+Une session clôturée est immuable : un trigger refuse sa modification, y compris
+via une API de confiance utilisant `service_role`. Les clients applicatifs et
+`service_role` n'ont aucun droit `DELETE` sur ces trois tables. Le provisionnement
+de confiance reste côté serveur ; ne jamais exposer de clé privilégiée au navigateur.
+
+Les vérifications des accès autorisés et refusés sont dans
+[`tests/timekeeping_rls.sql`](tests/timekeeping_rls.sql). Exécuter ce fichier
+uniquement sur un projet Supabase de test jetable, avec les trois migrations déjà
+appliquées. Il crée ses fixtures dans une transaction puis effectue un `rollback;` ;
+ne pas l'utiliser comme migration ni comme seed du projet hébergé.
+
 ## English
 
 ### Apply the profiles model
@@ -101,3 +152,54 @@ add a sign-in interface, or revoke Auth sessions when `is_active` changes.
 
 Allowed and denied access checks are in
 [`tests/profiles_rls.sql`](tests/profiles_rls.sql).
+
+### Timekeeping: sites, assignments, and sessions
+
+The new migration is
+[`migrations/20261023153000_create_timekeeping.sql`](migrations/20261023153000_create_timekeeping.sql).
+It depends on both earlier migrations: profiles, then numeric badge numbers.
+Do not rerun them if they are already applied to the project.
+
+To apply only this new migration to the hosted project:
+
+1. Open **SQL Editor → New query** in the Supabase dashboard.
+2. Select the administrative `postgres` role.
+3. Copy the entire `20261023153000_create_timekeeping.sql` file, from `begin;`
+   through `commit;`, and run it once.
+4. Verify the three tables, their constraints, triggers, and RLS policies.
+
+These instructions describe a manual application; they do not confirm that the
+migration has been executed on the hosted project. Synchronize CLI migration
+history before any future `db push`, as with the profiles migration.
+
+The model contains:
+
+- `sites`: name, optional address, coordinates, radius in meters, and active status.
+- `assignments`: a profile-to-site link with active status; this step introduces
+  no scheduled working hours.
+- `work_sessions`: check-in and checkout with coordinates, distance, and an
+  indicator for being within the radius. A unique index prevents more than one
+  open session per agent, including across different sites.
+
+Signed-in users can read active sites. Only an administrator with an active
+profile can also read inactive sites and create or update sites and assignments
+through an application client.
+
+Assignment and session access requires an active profile: agents read only their
+own records; supervisors and administrators can read all of them. An active agent
+can open a session only for themselves on an active site with an active assignment.
+They can only close their own open session, without changing check-in data.
+Checkout remains allowed if the site or assignment has since been deactivated,
+provided the agent's profile is still active. Supervisors and administrators have
+no client write access to sessions.
+
+A closed session is immutable: a trigger rejects changes even through a trusted
+API using `service_role`. Application clients and `service_role` have no `DELETE`
+privilege on any of these three tables. Trusted provisioning stays server-side;
+never expose a privileged key to the browser.
+
+Allowed and denied access checks are in
+[`tests/timekeeping_rls.sql`](tests/timekeeping_rls.sql). Run this file only on a
+disposable Supabase test project with all three migrations already applied.
+It creates fixtures inside a transaction and ends with `rollback;`; do not use
+it as a migration or as a seed for the hosted project.
