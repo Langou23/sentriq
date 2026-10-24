@@ -103,6 +103,24 @@ uniquement sur un projet Supabase de test jetable, avec les trois migrations dé
 appliquées. Il crée ses fixtures dans une transaction puis effectue un `rollback;` ;
 ne pas l'utiliser comme migration ni comme seed du projet hébergé.
 
+### Sites de démonstration pour l'agent 100001
+
+Après les trois migrations, exécuter manuellement
+[`seeds/demo_timekeeping.sql`](seeds/demo_timekeeping.sql) dans **SQL Editor → New query**,
+avec le rôle `postgres`. Copier le fichier complet, de `begin;` à `commit;`.
+Il crée deux sites fictifs bilingues « DEMO SENTRIQ », avec des coordonnées
+illustratives à Montréal et un rayon de 150 m, puis affecte le profil actif de rôle
+`agent` portant le matricule `100001` aux deux sites. Si ce profil manque ou est
+inactif, le script échoue sans créer les sites.
+
+Ce seed facultatif est distinct des migrations et des tests RLS avec rollback.
+Il conserve les données de démonstration par `commit;` et n'est jamais exécuté
+automatiquement. Une nouvelle exécution réutilise les sites et affectations ;
+les UUID réservés ne peuvent pas remplacer un site portant un autre nom.
+Le résultat attendu contient deux lignes avec `radius_m = 150`, `site_active = true`
+et `assignment_active = true`. Aucun utilisateur Auth, mot de passe, profil ou
+pointage n'est créé ou modifié.
+
 ## English
 
 ### Apply the profiles model
@@ -203,3 +221,20 @@ Allowed and denied access checks are in
 disposable Supabase test project with all three migrations already applied.
 It creates fixtures inside a transaction and ends with `rollback;`; do not use
 it as a migration or as a seed for the hosted project.
+
+### Demo sites for agent 100001
+
+After all three migrations, manually run
+[`seeds/demo_timekeeping.sql`](seeds/demo_timekeeping.sql) in **SQL Editor → New query**
+using the `postgres` role. Copy the entire file, from `begin;` through `commit;`.
+It creates two bilingual fictional "DEMO SENTRIQ" sites with illustrative Montreal
+coordinates and a 150 m radius, then assigns the active `agent` profile with badge
+number `100001` to both sites. If that profile is missing or inactive, the script
+fails without creating the sites.
+
+This optional seed is separate from migrations and rollback-based RLS tests.
+It persists demo data with `commit;` and never runs automatically. Rerunning it
+reuses the sites and assignments; reserved UUIDs cannot replace a differently named
+site. Expect two result rows with `radius_m = 150`, `site_active = true`, and
+`assignment_active = true`. It does not create or modify Auth users, passwords,
+profiles, or work sessions.
