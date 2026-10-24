@@ -39,8 +39,10 @@ Les nouveaux cookies de session restent différés jusqu'à validation du profil
 ils sont supprimés en cas de refus, même si la révocation distante échoue.
 
 Un profil actif redirige vers `/agent` (agent), `/dispatch` (supervisor) ou `/admin`
-(admin). Ces pages protégées affichent temporairement le nom, le rôle et la
-déconnexion en français et en anglais ; le matricule remplace un nom absent.
+(admin). Ces pages protégées affichent le nom, le rôle et la déconnexion en
+français et en anglais ; le matricule remplace un nom absent. `/agent` expose
+désormais le pointage du module timekeeping ; dispatch et administration restent
+des pages temporaires.
 `SignOutButton` utilise l'action existante et affiche aussi les états d'attente
 et les erreurs dans les deux langues. `signOut` redirige vers `/login`.
 Les actions invalident le cache des layouts et la déconnexion est
@@ -70,8 +72,9 @@ d'exclure tous les chemins contenant une extension.
 
 `/login` retourne le formulaire avec HTTP 200. Le proxy vérifie la session Auth ;
 les pages par rôle vérifient aussi le profil actif côté serveur à chaque accès.
-Elles utilisent l'interface publique `@/modules/auth/role-home`, qui applique le
-contrôle de `@/modules/auth/server` avant d'afficher les données utilisateur.
+Dispatch et administration utilisent l'interface publique `@/modules/auth/role-home`.
+La page agent utilise `@/modules/timekeeping/agent-home`. Les deux adaptateurs
+appliquent le contrôle de `@/modules/auth/server` avant d'afficher les données utilisateur.
 `requireProfile(expectedRole?)` appelle `auth.getUser()` auprès de Supabase Auth,
 puis lit le propre profil de cet utilisateur avec le client utilisateur soumis
 aux politiques RLS. Sans rôle attendu, il vérifie seulement l'identité et le profil
@@ -135,8 +138,9 @@ an unavailable-service message. New session cookies are deferred until the profi
 is approved; rejection clears them even if remote revocation fails.
 
 An active profile redirects to `/agent` (agent), `/dispatch` (supervisor), or `/admin`
-(admin). These protected pages temporarily display the name, role, and sign-out
-action in French and English; the badge number replaces a missing name.
+(admin). These protected pages display the name, role, and sign-out action in
+French and English; the badge number replaces a missing name. `/agent` now exposes
+the timekeeping module; dispatch and administration remain temporary pages.
 `SignOutButton` calls the existing action and also displays pending states and
 errors in both languages. `signOut` redirects to `/login`. Actions invalidate
 the layout cache. Sign-out ends only the current session
@@ -165,7 +169,8 @@ paths with an extension.
 
 `/login` returns the form with HTTP 200. The proxy verifies the Auth session;
 role pages also verify the active profile on the server on every access.
-They use the public `@/modules/auth/role-home` interface, which applies the
+Dispatch and administration use the public `@/modules/auth/role-home` interface.
+The agent page uses `@/modules/timekeeping/agent-home`. Both adapters apply the
 `@/modules/auth/server` guard before rendering user data.
 `requireProfile(expectedRole?)` calls `auth.getUser()` against Supabase Auth, then
 reads that user's own profile through the user client and RLS policies. Without an

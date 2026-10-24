@@ -80,9 +80,10 @@ Le modèle comprend :
   de présence dans le rayon. Un index unique interdit plusieurs sessions ouvertes
   pour un même agent, même sur des sites différents.
 
-Les sites actifs sont visibles aux utilisateurs connectés. Seul un administrateur
-au profil actif peut aussi consulter les sites inactifs et créer ou modifier
-des sites et des affectations depuis un client applicatif.
+Les sites actifs sont visibles aux utilisateurs connectés. Un administrateur au
+profil actif peut consulter tous les sites et créer ou modifier des sites et des
+affectations depuis un client applicatif. L'exception limitée aux agents ayant une
+session ouverte est décrite dans la migration suivante.
 
 L'accès aux affectations et aux sessions exige un profil actif : un agent ne lit
 que les siennes ; un superviseur ou administrateur peut toutes les lire.
@@ -102,6 +103,32 @@ Les vérifications des accès autorisés et refusés sont dans
 uniquement sur un projet Supabase de test jetable, avec les trois migrations déjà
 appliquées. Il crée ses fixtures dans une transaction puis effectue un `rollback;` ;
 ne pas l'utiliser comme migration ni comme seed du projet hébergé.
+
+### Lire le site d'une session ouverte
+
+Après les trois migrations précédentes, appliquer aussi
+[`migrations/20261024020330_allow_open_session_site_read.sql`](migrations/20261024020330_allow_open_session_site_read.sql)
+une seule fois dans **SQL Editor → New query**, avec le rôle `postgres`, en copiant
+le fichier complet de `begin;` à `commit;`. Cette étape est nécessaire pour calculer
+la distance de sortie si le site a été désactivé pendant une session.
+
+Un agent au profil actif peut alors lire les coordonnées et le rayon du site de
+sa propre session ouverte, même si le site ou l'affectation a été désactivé. Aucun
+autre site inactif n'est ajouté à ses accès. L'exception disparaît après la clôture,
+si le profil devient inactif ou si son rôle n'est plus `agent`.
+
+La fonction `current_user_open_work_site_id()` retourne uniquement le site de
+la session ouverte associée à `auth.uid()`. Son exécution privilégiée et son
+`search_path` vide évitent une récursion entre les politiques `sites` et
+`work_sessions`. Elle n'autorise aucune création de session sur un site inactif et
+ne change pas les droits d'écriture. Les accès administrateur existants restent
+inchangés.
+
+Les 47 vérifications supplémentaires sont dans
+[`tests/open_session_site_rls.sql`](tests/open_session_site_rls.sql), à exécuter
+uniquement sur un projet de test jetable après les quatre migrations. Comme les
+autres suites RLS, elles se terminent par `rollback;`. Leur réussite en PostgreSQL
+isolé ne confirme pas l'application de cette migration au projet hébergé.
 
 ### Sites de démonstration pour l'agent 100001
 
@@ -199,9 +226,10 @@ The model contains:
   indicator for being within the radius. A unique index prevents more than one
   open session per agent, including across different sites.
 
-Signed-in users can read active sites. Only an administrator with an active
-profile can also read inactive sites and create or update sites and assignments
-through an application client.
+Signed-in users can read active sites. An administrator with an active profile
+can read every site and create or update sites and assignments through an
+application client. The limited exception for agents with an open session is
+described in the next migration.
 
 Assignment and session access requires an active profile: agents read only their
 own records; supervisors and administrators can read all of them. An active agent
@@ -221,6 +249,31 @@ Allowed and denied access checks are in
 disposable Supabase test project with all three migrations already applied.
 It creates fixtures inside a transaction and ends with `rollback;`; do not use
 it as a migration or as a seed for the hosted project.
+
+### Read an open session's site
+
+After the three earlier migrations, also apply
+[`migrations/20261024020330_allow_open_session_site_read.sql`](migrations/20261024020330_allow_open_session_site_read.sql)
+once in **SQL Editor → New query** using the `postgres` role. Copy the entire file
+from `begin;` through `commit;`. This is required to calculate checkout distance
+when the site has been deactivated during an ongoing session.
+
+An agent with an active profile can then read the coordinates and radius of their
+own open session's site, even after site or assignment deactivation. This adds no
+access to other inactive sites. The exception ends after checkout, profile
+deactivation, or a role change away from `agent`.
+
+`current_user_open_work_site_id()` returns only the site of the open session
+associated with `auth.uid()`. Its privileged execution and empty `search_path`
+prevent recursive policy evaluation between `sites` and `work_sessions`. It does
+not allow new sessions at inactive sites or change write permissions. Existing
+administrator access remains unchanged.
+
+The 47 additional checks are in
+[`tests/open_session_site_rls.sql`](tests/open_session_site_rls.sql). Run them only
+against a disposable test project after all four migrations. Like the other RLS
+suites, they end with `rollback;`. Passing in isolated PostgreSQL does not confirm
+that this migration has been applied to the hosted project.
 
 ### Demo sites for agent 100001
 

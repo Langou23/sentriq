@@ -1,7 +1,8 @@
 # Database access checks
 
-Apply all versioned migrations first, including the numeric badge constraint and
-the timekeeping migration, then run both SQL scripts as `postgres` against a
+Apply all versioned migrations first, including the numeric badge constraint,
+the timekeeping migration, and the open-session site access migration. Then run
+all three SQL scripts as `postgres` against a
 disposable Supabase database. The test runner must be able to insert
 test `auth.users` and switch to `anon`, `authenticated`, and `service_role`.
 The script uses PostgreSQL and PL/pgSQL only; it does not require pgTAP or a new
@@ -12,11 +13,12 @@ With an existing PostgreSQL client and an already configured local connection:
 ```sh
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/profiles_rls.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/timekeeping_rls.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/open_session_site_rls.sql
 ```
 
 Keep the connection value local and never commit or print credentials. For a
 disposable hosted test project, the entire file can also be run in its SQL Editor.
-Run the two files separately; each creates its own temporary helpers and ends
+Run the three files separately; each creates its own temporary helpers and ends
 with a rollback. These scripts test an already applied schema and do not apply
 the migrations themselves.
 
@@ -35,7 +37,9 @@ The 153 assertions in `timekeeping_rls.sql` verify `sites`, `assignments`, and
 - RLS, foreign keys, generated identities, timestamp defaults and update triggers,
   coordinate/radius/distance constraints, and the one-open-session index.
 - Active-site reads by authenticated users, including profileless or inactive
-  users; access to inactive sites and site/assignment management only by active admins.
+  users, plus inactive-site access and site/assignment management by active admins.
+  The separate open-session suite covers the narrow inactive-site exception for
+  an active agent's own ongoing session.
 - Own assignment/session history for active agents, all operational history for
   active supervisors/admins, and denied access for missing or inactive profiles.
 - Check-in only for the active agent's own active assignment at an active site,
@@ -52,6 +56,20 @@ The timekeeping fixtures use the separate UUID namespace
 They do not reuse the profile suite's fixture identities. The open-session check
 exercises the database's unique constraint across sites; it does not create
 parallel clients or test real-time application behavior.
+
+The 47 assertions in `open_session_site_rls.sql` cover the hardened,
+authentication-scoped open-site helper and its restricted execution grants.
+They verify that an active agent can read only their own open session's inactive
+site, retain checkout access after site/assignment deactivation, and lose that
+exception after checkout, profile deactivation, or a role change. Other agents'
+inactive sites, historical closed-session sites, and unrelated inactive sites
+stay hidden. New check-in and checkout statements are exercised to detect RLS
+recursion, and inactive-site check-in remains denied. Existing active-site and
+administrator access is also checked.
+
+This suite uses UUIDs starting with `20000000-0000-4000-8000-` so it does not
+overlap the other suites. Its fixtures and profile/site status changes are
+rolled back together.
 
 All valid badge fixtures use ASCII digit strings. User fixtures use reserved UUIDs
 and `example.invalid` addresses. Existing matching
