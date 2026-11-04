@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { AuthMessage } from "@/modules/auth";
 import { checkIn, checkOut } from "./actions";
+import { createElapsedClock } from "./elapsed-clock";
 import { timekeepingError } from "./errors";
 import type {
   AgentWorkspaceData,
@@ -112,12 +113,11 @@ function ElapsedTime({
   }));
 
   useEffect(() => {
-    const initialNow = Date.parse(serverNow);
-    const baseline = performance.now();
+    const readNow = createElapsedClock(serverNow);
     const interval = window.setInterval(() => {
       setClock({
         source: serverNow,
-        now: initialNow + performance.now() - baseline,
+        now: readNow(),
       });
     }, 1_000);
     return () => window.clearInterval(interval);

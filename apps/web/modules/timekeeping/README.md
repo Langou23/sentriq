@@ -87,6 +87,10 @@ Une absence d’affectation et une erreur de lecture ont des messages distincts.
 Une session ouverte affiche son site, son début à l’heure du Québec et sa durée
 écoulée. Les traductions anglaises suivent les libellés français.
 
+Le chronomètre est ancré sur l’heure serveur et ajoute le temps mural écoulé,
+y compris pendant la veille du téléphone. Sa première valeur reste identique
+au rendu serveur ; il ne modifie jamais les heures persistées de pointage.
+
 Le navigateur demande une position ponctuelle uniquement au clic sur une action,
 avec haute précision, un délai maximal de 15 secondes et aucun cache de position.
 Un verrou empêche les doubles clics pendant la localisation, l’écriture et
@@ -181,6 +185,10 @@ selected automatically; multiple sites require a choice. Missing assignments and
 query failures have separate messages. An open session shows its site, start in
 Quebec time and elapsed duration. English translations follow French labels.
 
+The elapsed clock is anchored to server time and adds elapsed wall time, including
+device sleep. Its first value stays consistent with server rendering; it never
+changes persisted check-in or checkout timestamps.
+
 The browser requests a single position only on an action click, with high accuracy,
 a 15-second timeout and no cached position. A synchronous lock prevents duplicate
 clicks during location, persistence and refresh. Permission denial, unavailable
@@ -197,3 +205,4 @@ and other inactive sites do not grant that access.
 
 - [Geolocation getCurrentPosition](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/getCurrentPosition)
 - [Next.js Server Actions](https://nextjs.org/docs/app/getting-started/mutating-data)
+- [Clock behavior during device sleep](https://developer.mozilla.org/en-US/docs/Web/API/Performance/now#ticking_during_sleep)

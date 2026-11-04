@@ -4,19 +4,19 @@ The story is an authenticated agent choosing an assigned site, obtaining a singl
 browser position, invoking a guarded Server Action, persisting a work session
 through the user-scoped Supabase client, and rendering its state and perimeter flag.
 
-| Boundary                       | Evidence                                                                                                                                                                                                   |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Authentication and role guards | Existing HTTP auth suite passed against the built application: sign-in/out, inactive/missing profiles, and cross-role redirects.                                                                           |
-| Unit decisions and SDK queries | 163 Vitest cases and 214 existing Node auth cases passed. Timekeeping tests exercise real Zod schemas, Haversine calculations, repository logic, owner filters and mutation payloads.                      |
-| PostgreSQL access              | All four migrations applied in isolated PostgreSQL. The 75 profile, 153 timekeeping and 47 open-site access checks passed; all fixtures rolled back.                                                       |
-| Browser location               | Injected GPS replacement was verified by a DOM marker set after installation. Requests used `enableHighAccuracy: true`, `timeout: 15000`, and `maximumAge: 0`; no real GPS was requested.                  |
-| Browser to Server Action       | A single assigned site required no radio selection. Two sites required a selection. Double-clicking produced one location request and one insert for the selected site.                                    |
-| Server Action to data          | Inside check-in stored distance zero and a true perimeter flag. Outside check-in/checkout remained accepted and stored false flags. Server-generated times and conditional checkout writes were exercised. |
-| Data to interface              | The running shift showed the site, Quebec start time, ticking duration and checkout action. The outside badge persisted for the latest completed shift after a full reload.                                |
-| Error states                   | Denied, unavailable, timed-out and unsupported GPS produced bilingual errors and no writes. No assignment rendered its dedicated message; query failure rendered a service error instead.                  |
-| Concurrent changes             | Simulated competing check-in/checkout produced localized already-open/already-closed errors without duplicate inserts or rewritten history. Refresh exposed the committed state.                           |
-| Revoked assignment/site        | An open shift remained readable and could be closed after both the site and assignment were deactivated.                                                                                                   |
-| Mobile and runtime             | The configured 390 px mobile viewport had no horizontal overflow (375 px document client and scroll widths). No browser console errors or warnings occurred.                                               |
+| Boundary                       | Evidence                                                                                                                                                                                                        |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Authentication and role guards | Existing HTTP auth suite passed against the built application: sign-in/out, inactive/missing profiles, and cross-role redirects.                                                                                |
+| Unit decisions and SDK queries | 169 Vitest cases and 214 existing Node auth cases passed. Timekeeping tests exercise real Zod schemas, Haversine calculations, repository logic, owner filters, mutation payloads and elapsed time after sleep. |
+| PostgreSQL access              | All four migrations applied in isolated PostgreSQL. The 75 profile, 153 timekeeping and 47 open-site access checks passed; all fixtures rolled back.                                                            |
+| Browser location               | Injected GPS replacement was verified by a DOM marker set after installation. Requests used `enableHighAccuracy: true`, `timeout: 15000`, and `maximumAge: 0`; no real GPS was requested.                       |
+| Browser to Server Action       | A single assigned site required no radio selection. Two sites required a selection. Double-clicking produced one location request and one insert for the selected site.                                         |
+| Server Action to data          | Inside check-in stored distance zero and a true perimeter flag. Outside check-in/checkout remained accepted and stored false flags. Server-generated times and conditional checkout writes were exercised.      |
+| Data to interface              | The running shift showed the site, Quebec start time, ticking duration and checkout action. The outside badge persisted for the latest completed shift after a full reload.                                     |
+| Error states                   | Denied, unavailable, timed-out and unsupported GPS produced bilingual errors and no writes. No assignment rendered its dedicated message; query failure rendered a service error instead.                       |
+| Concurrent changes             | Simulated competing check-in/checkout produced localized already-open/already-closed errors without duplicate inserts or rewritten history. Refresh exposed the committed state.                                |
+| Revoked assignment/site        | An open shift remained readable and could be closed after both the site and assignment were deactivated.                                                                                                        |
+| Mobile and runtime             | The configured 390 px mobile viewport had no horizontal overflow (375 px document client and scroll widths). No browser console errors or warnings occurred.                                                    |
 
 The browser checks use the isolated fixture described in [README.md](README.md).
 They verify the built Next.js application and real Supabase SDK against controlled
@@ -28,3 +28,24 @@ applied manually to the hosted Supabase project before acceptance testing there.
 No hosted Auth account, profile, work session or device location was changed or
 collected during these checks. See the module README for the direct-table access
 and client-reported GPS boundaries.
+
+## Reverification on 2026-11-04
+
+The full mobile browser matrix above was rerun against a fresh production build,
+including both competing-write cases, all four GPS failures and the deactivated
+site/assignment checkout. No horizontal overflow or browser console warnings or
+errors were observed. The root build, lint and typecheck all passed.
+
+The review found that `performance.now()` can pause during device sleep on some
+mobile browsers. The display clock now adds `Date.now()` deltas to its server
+anchor. Six regression cases cover initially inaccurate device clocks, normal
+progression, eight hours of simulated sleep without callbacks or a ticking
+performance clock, server-anchor replacement and a backward device-clock change.
+This verifies a simulated sleep, not a physical iOS device.
+
+A read-only anonymous call to the hosted
+`current_user_open_work_site_id` RPC returned HTTP 404 / `PGRST202`: the required
+helper was not found in the exposed schema cache. Hosted acceptance is still
+pending application or confirmation of the versioned migration above. No hosted
+rows or account credentials were changed. The browser and SQL checks remain
+isolated evidence, not proof of deployment to hosted Supabase.
