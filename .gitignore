@@ -11,6 +11,7 @@ next-env.d.ts
 
 # Local environment values and credentials
 .env*
+!apps/web/.env.example
 *.pem
 *.key
 *.p12
